@@ -58,6 +58,12 @@ export async function handleMcp(ctx, req, res) {
     }
     if (!rpc || typeof rpc !== 'object') throw httpError(400, 'invalid_request', 'invalid json');
   }
+  ctx.aiAction = {
+    upstreamId: currentUpstream(ctx).id,
+    grantId: auth.grant.grantId,
+    method: actionMethod(req, rpc),
+    tool: actionTool(rpc),
+  };
   const toolsList = Boolean(rpc && !Array.isArray(rpc) && rpc.method === 'tools/list' && rpc.id !== undefined && rpc.id !== null);
   const initialize = Boolean(rpc && !Array.isArray(rpc) && rpc.method === 'initialize');
   const sessionHeader = req.headers['mcp-session-id'];
@@ -340,6 +346,27 @@ async function forgetSession(ctx, sessionId) {
  */
 function currentUpstream(ctx) {
   return ctx.upstream || ctx.config.upstream;
+}
+
+/**
+ * @param {import('node:http').IncomingMessage} req
+ * @param {object | object[] | null} rpc
+ */
+function actionMethod(req, rpc) {
+  if (req.method === 'GET') return 'listen';
+  if (req.method === 'DELETE') return 'end';
+  if (Array.isArray(rpc)) return 'batch';
+  if (rpc && typeof rpc.method === 'string') return rpc.method;
+  return 'request';
+}
+
+/**
+ * Tool arguments are intentionally not read. Only the tool's name is shown.
+ * @param {object | object[] | null} rpc
+ */
+function actionTool(rpc) {
+  if (!rpc || Array.isArray(rpc) || rpc.method !== 'tools/call' || !rpc.params) return '';
+  return typeof rpc.params.name === 'string' ? rpc.params.name : '';
 }
 
 /**

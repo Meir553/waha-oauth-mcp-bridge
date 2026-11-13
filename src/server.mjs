@@ -10,13 +10,16 @@ import { OAuthError, handleToken } from './oauth/token.mjs';
 import { handleMcp } from './mcp/proxy.mjs';
 import { createWindowLimiter } from './rate-limit.mjs';
 import { renderLocalErrorPage } from './web/login.mjs';
+import { createActivityLog } from './activity.mjs';
+import { createAdmin } from './admin/panel.mjs';
 
-const BROWSER = new Set(['/login', '/oauth/authorize', '/oauth/consent', '/logout']);
+const BROWSER = new Set(['/login', '/oauth/authorize', '/oauth/consent', '/logout', '/admin', '/admin/login']);
 
 /**
  * @param {{ config: object, store: object, logger: object, clock: { now: () => number }, cimd: object, lookup?: Function, css: Buffer }} deps
  */
 export function createHandler(deps) {
+  const adminRoutes = deps.admin ? deps.admin.routes : {};
   const tokenLimiter = createWindowLimiter({
     clock: deps.clock,
     max: deps.config.limits.tokenMaxPerWindow,
@@ -51,7 +54,7 @@ export function createHandler(deps) {
         throw new HttpError(400, 'invalid_request', 'invalid host');
       }
       if ((req.rawHeaders || []).join('').length > 16 * 1024) throw new HttpError(431, 'headers_too_large', 'headers too large');
-      const route = matchRoute(pathname, deps.config);
+      const route = matchRoute(pathname, deps.config, adminRoutes);
       if (!route) return sendJson(res, 404, { error: 'not_found' }, { hsts: deps.config.hsts, requestId });
       ctx.upstream = route.upstream;
       const handler = route.handlers[req.method || ''];
@@ -95,6 +98,15 @@ export function createHandler(deps) {
       deps.logger.error({ event: 'internal', requestId, route: pathname, errorCategory: 'internal' });
       sendJson(res, 500, { error: 'internal_error', requestId }, { hsts: deps.config.hsts, requestId });
     } finally {
+      if (ctx.aiAction && deps.activity) {
+        deps.activity.record({
+          upstreamId: ctx.aiAction.upstreamId,
+          grantId: ctx.aiAction.grantId,
+          method: ctx.aiAction.method,
+          tool: ctx.aiAction.tool,
+          status: res.statusCode || 0,
+        });
+      }
       deps.logger.info({
         event: 'request',
         requestId,
@@ -114,8 +126,9 @@ export function createHandler(deps) {
  * @param {string} pathname
  * @param {{ upstreamByPath: Map<string, object>, upstreamByMetadata: Map<string, object> }} config
  */
-function matchRoute(pathname, config) {
+function matchRoute(pathname, config, adminRoutes) {
   const fixed = {
+    ...adminRoutes,
     '/.well-known/oauth-protected-resource': { GET: sendResource },
     '/.well-known/oauth-protected-resource/mcp': { GET: sendResource },
     '/.well-known/oauth-authorization-server': { GET: sendAuthorizationServer },
@@ -212,7 +225,11 @@ function safePath(url) {
 export async function startBridge(deps) {
   const { readFile } = await import('node:fs/promises');
   const css = deps.css || await readFile(new URL('./web/styles.css', import.meta.url));
-  const handler = createHandler({ ...deps, css });
+  const activity = deps.activity || createActivityLog({ clock: deps.clock });
+  activity.startHeartbeat(15000);
+  const script = deps.adminJs || await readFile(new URL('./web/admin.js', import.meta.url));
+  const admin = deps.admin || createAdmin({ activity, script });
+  const handler = createHandler({ ...deps, css, activity, admin });
   const server = deps.config.tls
     ? https.createServer({
       key: deps.config.tls.keyPem,
@@ -234,6 +251,8 @@ export async function startBridge(deps) {
     port: typeof address === 'object' && address ? address.port : deps.config.listenPort,
     inflight: handler.inflight,
     async close() {
+      activity.close();
+      admin.close();
       for (const request of handler.inflight) request.destroy();
       if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
       await new Promise((resolve) => server.close(() => resolve()));

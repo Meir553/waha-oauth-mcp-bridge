@@ -134,3 +134,18 @@ export function registerUpstreams(origin, entries) {
   if (!byId.has('default')) throw new Error('upstream id is invalid');
   return { byId, byPath, byResource, byMetadata, list: [...byId.values()] };
 }
+
+/**
+ * Swap the live maps the request router reads. Call this after the upstream file is saved.
+ * @param {object} config
+ * @param {{ byId: Map<string, object>, byPath: Map<string, object>, byResource: Map<string, object>, byMetadata: Map<string, object>, list: object[] }} registry
+ */
+export function installRegistry(config, registry) {
+  config.upstreamById = registry.byId;
+  config.upstreamByPath = registry.byPath;
+  config.upstreamByResource = registry.byResource;
+  config.upstreamByMetadata = registry.byMetadata;
+  config.upstreams = registry.list;
+  config.upstream = registry.byId.get('default');
+  config.resource = registry.byId.get('default').resource;
+}

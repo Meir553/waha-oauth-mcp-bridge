@@ -2,6 +2,8 @@ export const COOKIE = Object.freeze({
   session: '__Host-session',
   pending: '__Host-pending',
   csrf: '__Host-csrf',
+  admin: '__Host-admin',
+  adminLogin: '__Host-admin-login',
 });
 
 export class HttpError extends Error {
@@ -45,17 +47,21 @@ export function escapeHtml(value) {
 }
 
 /**
- * @param {{ html?: boolean, noStore?: boolean, hsts?: boolean }} options
+ * @param {{ html?: boolean, script?: boolean, noStore?: boolean, hsts?: boolean }} options
  * @returns {Record<string, string>}
  */
 export function securityHeaders(options = {}) {
+  let policy = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'";
+  if (options.html && options.script) {
+    policy = "default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
+  } else if (options.html) {
+    policy = "default-src 'none'; style-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
+  }
   const headers = {
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'no-referrer',
     'X-Frame-Options': 'DENY',
-    'Content-Security-Policy': options.html
-      ? "default-src 'none'; style-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
-      : "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
+    'Content-Security-Policy': policy,
   };
   if (options.noStore !== false) {
     headers['Cache-Control'] = 'no-store';
@@ -276,13 +282,13 @@ export function sendJson(res, status, body, options = {}) {
  * @param {import('node:http').ServerResponse} res
  * @param {number} status
  * @param {string} html
- * @param {{ hsts?: boolean, requestId?: string, headers?: Record<string, string> }} [options]
+ * @param {{ hsts?: boolean, requestId?: string, headers?: Record<string, string>, script?: boolean }} [options]
  */
 export function sendHtml(res, status, html, options = {}) {
   if (res.headersSent || res.writableEnded) return;
   const payload = Buffer.from(html);
   const headers = {
-    ...securityHeaders({ html: true, hsts: options.hsts, noStore: true }),
+    ...securityHeaders({ html: true, script: options.script, hsts: options.hsts, noStore: true }),
     'Content-Type': 'text/html; charset=utf-8',
     'Content-Length': String(payload.length),
     ...(options.requestId ? { 'X-Request-Id': options.requestId } : {}),
