@@ -6,6 +6,8 @@ import { classifyClientId, isRedirectStructurallyAllowed } from './cimd.mjs';
 import { parseScope } from './metadata.mjs';
 import { layout, renderConsentForm, renderLocalErrorPage, renderLoginForm } from '../web/login.mjs';
 
+const issuedConsents = new Map();
+
 const CRITICAL = new Set([
   'response_type', 'client_id', 'redirect_uri', 'code_challenge', 'code_challenge_method',
   'resource', 'scope', 'state',
@@ -179,7 +181,11 @@ export async function handleConsentPost(ctx, req, res) {
   const form = parseForm(ctx.body, { maxPairs: 8, maxKey: 32, maxValue: 256 });
   const decision = form.get('decision');
   const view = await consentContext(ctx, req, form.get('csrf') || '', form.get('request_id') || '');
-  if (!view.ok) return localError(ctx, res, view.status || 403);
+  if (!view.ok) {
+    const again = view.sessionId ? recallConsent(ctx, view.sessionId, view.requestId) : null;
+    if (again) return sendRedirect(res, again, { hsts: ctx.config.hsts, requestId: ctx.requestId });
+    return localError(ctx, res, view.status || 403);
+  }
   if (decision !== 'approve' && decision !== 'deny') return localError(ctx, res, 400);
   const outcome = await ctx.store.transaction(async (draft) => {
     const now = ctx.clock.now();
@@ -192,7 +198,9 @@ export async function handleConsentPost(ctx, req, res) {
     if (!timingSafeEqualString(sha256Hex(view.csrf), pending.csrfHash)) return { error: 'csrf' };
     delete draft.pendingAuthorizations[sha256Hex(view.requestId)];
     if (decision === 'deny') {
-      return { redirect: redirectTarget(pending.redirectUri, { error: 'access_denied', state: pending.state, iss: ctx.config.issuer }) };
+      const redirect = redirectTarget(pending.redirectUri, { error: 'access_denied', state: pending.state, iss: ctx.config.issuer });
+      rememberConsent(view.requestId, view.sessionId, redirect, '', now + ctx.config.ttl.codeMs);
+      return { redirect };
     }
     const grantId = randomBytes(16).toString('hex');
     draft.grants[grantId] = {
@@ -219,7 +227,9 @@ export async function handleConsentPost(ctx, req, res) {
       expiresAt: now + ctx.config.ttl.codeMs,
       usedAt: null,
     };
-    return { redirect: redirectTarget(pending.redirectUri, { code, state: pending.state, iss: ctx.config.issuer }) };
+    const redirect = redirectTarget(pending.redirectUri, { code, state: pending.state, iss: ctx.config.issuer });
+    rememberConsent(view.requestId, view.sessionId, redirect, sha256Hex(code), now + ctx.config.ttl.codeMs);
+    return { redirect };
   });
   if (!outcome.redirect) return localError(ctx, res, 403);
   clearCookie(res, COOKIE.pending);
@@ -323,6 +333,41 @@ async function currentPending(ctx, req) {
 }
 
 /**
+ * The browser may block the first return trip to ChatGPT. A second click from the
+ * same login must send the same unused code, not a dead-end error.
+ * @param {string} requestId
+ * @param {string} sessionId
+ * @param {string} redirect
+ * @param {string} codeHash
+ * @param {number} expiresAt
+ */
+function rememberConsent(requestId, sessionId, redirect, codeHash, expiresAt) {
+  const key = sha256Hex(`${sessionId}\n${requestId}`);
+  issuedConsents.set(key, { redirect, codeHash, expiresAt });
+  if (issuedConsents.size > 100) {
+    const now = Date.now();
+    for (const [id, row] of issuedConsents) {
+      if (row.expiresAt <= now) issuedConsents.delete(id);
+    }
+  }
+}
+
+/**
+ * @param {object} ctx
+ * @param {string} sessionId
+ * @param {string} requestId
+ */
+function recallConsent(ctx, sessionId, requestId) {
+  const row = issuedConsents.get(sha256Hex(`${sessionId}\n${requestId}`));
+  if (!row || row.expiresAt <= ctx.clock.now()) return null;
+  if (row.codeHash) {
+    const code = ctx.store.read().authorizationCodes[row.codeHash];
+    if (!code || code.usedAt) return null;
+  }
+  return row.redirect;
+}
+
+/**
  * @param {object} ctx
  * @param {import('node:http').IncomingMessage} req
  * @param {string} [csrf]
@@ -343,9 +388,10 @@ async function consentContext(ctx, req, csrf, requestId) {
       pending: state.pendingAuthorizations[sha256Hex(pendingId)],
     };
   });
-  if (!snapshot.session || !snapshot.pending) return { ok: false, status: 403 };
-  if (snapshot.pending.sessionBinding !== sha256Hex(sessionId)) return { ok: false, status: 403 };
+  if (!snapshot.session) return { ok: false, status: 403 };
   if (!timingSafeEqualString(sha256Hex(presented), snapshot.session.csrfHash || '')) return { ok: false, status: 403 };
+  if (!snapshot.pending) return { ok: false, status: 403, sessionId, requestId: pendingId, csrf: presented };
+  if (snapshot.pending.sessionBinding !== sha256Hex(sessionId)) return { ok: false, status: 403 };
   if (!timingSafeEqualString(sha256Hex(presented), snapshot.pending.csrfHash || '')) return { ok: false, status: 403 };
   return { ok: true, sessionId, csrf: presented, requestId: pendingId, pending: snapshot.pending };
 }

@@ -55,7 +55,7 @@ export function securityHeaders(options = {}) {
   if (options.html && options.script) {
     policy = "default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
   } else if (options.html) {
-    policy = "default-src 'none'; style-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
+    policy = "default-src 'none'; style-src 'self'; form-action 'self' https://chatgpt.com; base-uri 'none'; frame-ancestors 'none'";
   }
   const headers = {
     'X-Content-Type-Options': 'nosniff',

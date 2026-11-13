@@ -165,7 +165,15 @@ test('C-07 C-08 C-09 C-10 metadata failure, escaping, iss, and flow isolation', 
       path: '/oauth/consent',
       form: { csrf: hidden(consent.text, 'csrf'), request_id: hidden(consent.text, 'request_id'), decision: 'approve' },
     });
+    assert.match(consent.headers['content-security-policy'], /form-action 'self' https:\/\/chatgpt\.com/);
     const location = new URL(approved.headers.location);
+    const again = await h.client.request({
+      method: 'POST',
+      path: '/oauth/consent',
+      form: { csrf: hidden(consent.text, 'csrf'), request_id: hidden(consent.text, 'request_id'), decision: 'approve' },
+    });
+    assert.equal(again.status, 303);
+    assert.equal(again.headers.location, approved.headers.location);
     assert.equal(location.searchParams.get('iss'), 'https://mcp.test.local');
     assert.equal(location.searchParams.get('state'), 'keep me');
     assert.equal(location.hash, '');
