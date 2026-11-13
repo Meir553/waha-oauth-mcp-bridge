@@ -17,3 +17,9 @@ Desktop.ini
 *.p12
 *.pfx
 BUILD_REPORT.local.md
+BUILD_REPORT.md
+AGENTS.md
+CURSOR_BUILD_PROMPT.md
+CURSOR_PLAN_MODE_PROMPT.txt
+.cursor/
+docs/
