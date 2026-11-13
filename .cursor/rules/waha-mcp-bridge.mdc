@@ -1,0 +1,7 @@
+---
+description: Binding engineering and verification rules for the WAHA MCP OAuth bridge
+alwaysApply: true
+---
+# WAHA MCP Bridge
+
+Read `AGENTS.md` plus all `docs/*.md` before coding. Deliver the fully implemented Node.js 18+ native-only OAuth 2.1 / MCP proxy, not a design mockup. Never install npm packages, connect to production WAHA, weaken authentication, or publish secrets. Follow the exact file tree, OAuth protocol details, HTTP streaming requirements, tests, scripts, build artifact, and deployment runbook. Keep `BUILD_REPORT.md` accurate and distinguish simulated tests from actual ChatGPT and actual WAHA tests.

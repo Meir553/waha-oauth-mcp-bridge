@@ -1,0 +1,28 @@
+{
+  "name": "waha-mcp-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Meir553/waha-oauth-mcp-bridge.git"
+  },
+  "description": "Self-hosted OAuth-to-MCP bridge. Each ChatGPT grant is approved for one configured WAHA.",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "scripts": {
+    "start": "node src/main.mjs",
+    "dev": "node scripts/dev.mjs",
+    "init": "node scripts/init.mjs",
+    "test": "node --test test/oauth.test.mjs test/proxy.test.mjs test/gates.test.mjs test/coverage.test.mjs test/upstreams.test.mjs",
+    "test:integration": "node --test test/oauth.test.mjs test/proxy.test.mjs test/gates.test.mjs test/coverage.test.mjs test/upstreams.test.mjs",
+    "build": "node scripts/build.mjs",
+    "doctor:local": "node scripts/doctor-local.mjs",
+    "doctor:remote": "node scripts/doctor-remote.mjs",
+    "lint:security": "node scripts/security-check.mjs",
+    "admin": "node scripts/admin.mjs"
+  }
+}

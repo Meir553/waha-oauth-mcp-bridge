@@ -1,0 +1,7 @@
+Implement the complete WAHA MCP OAuth Bridge described in this project's existing specification. The entire architecture and acceptance criteria have ALREADY been decided, so do not ask me to redesign them or simplify the security requirements.
+
+First read AGENTS.md, CURSOR_BUILD_PROMPT.md, and every file in docs/ (01 through 06). In Cursor PLAN MODE, create a registered, reviewable implementation plan whose to-dos cover every P0 package in docs/06-WORK-BREAKDOWN.md, including all tests from docs/03-TEST-AND-ACCEPTANCE.md. Link the relevant repo files in the plan. Include a final verification task for npm test, npm run doctor:local, npm run lint:security, npm run build, and BUILD_REPORT.md.
+
+This is a new project: no real WAHA URL/key, TLS certificate or external access is available yet. Implement against local simulated WAHA/ChatGPT fixtures with Node 26 built-in modules only. Do not install npm packages, omit security features, edit production infrastructure, or claim live ChatGPT success. No additional clarifying questions are required to create this plan.
+
+Once Cursor's plan is ready, show its normal BUILD action so I can click it to implement all P0 tasks autonomously. Do not just write a disconnected .md file and pretend it activates the Build button.
