@@ -24,7 +24,80 @@ Init asks for the operator username, a password of at least 16 characters, the p
 
 On Windows, restrict the ACLs for `.env`, `data/`, and the TLS private key to the operator account. POSIX modes are recorded as `0600` and `0700`, and Windows does not apply them.
 
-`npm run dev` forces loopback HTTP and is only for a local process. Production is `npm start`, which requires Node.js 18 or newer, `NODE_ENV=production`, and the certificate files.
+`npm start` reads `.env` from the directory where you start it. A variable already set in the process environment wins over the file. `npm run dev` forces loopback HTTP for that process only. Production is `npm start` with `NODE_ENV=production` and the certificate files.
+
+## Environment
+
+The operator username and password are not environment variables. You choose them when init asks. The password is 16 to 256 characters. Init stores a hash in `DATA_DIR/state.json`.
+
+### Required
+
+| Variable | Where it comes from |
+|---|---|
+| `PUBLIC_ORIGIN` | The public address of this bridge. You choose a DNS name you control, point its A or AAAA record at this machine, and write that name here as `https://` with no path and no trailing slash. Example: `https://mcp.example.com`. If the public port is not 443, include it, for example `https://mcp.example.com:8443`. The certificate must be issued for this hostname. ChatGPT's connector URL for the first WAHA is this origin plus `/mcp`. |
+| `LISTEN_HOST` | The address this process binds. Use `0.0.0.0` to listen on every IPv4 interface. Init writes that value. |
+| `LISTEN_PORT` | The TCP port this process binds. It defaults to `443` and must be the port in `PUBLIC_ORIGIN`, because this process terminates TLS itself. Binding port 443 usually requires root or another privilege. Init writes `443`. |
+| `TLS_CERT_FILE` | The PEM certificate chain for `PUBLIC_ORIGIN`. You get it from the certificate issuer, for example Let's Encrypt `fullchain.pem`. The path must be a regular file, and it must not be a symlink. |
+| `TLS_KEY_FILE` | The PEM private key that matches `TLS_CERT_FILE`, for example `privkey.pem` from the same issuance. The path must be a regular file, and it must not be a symlink. |
+| `UPSTREAM_MCP_URL` | WAHA's MCP address for the first WhatsApp session. On the same machine this is usually `http://127.0.0.1:3000/mcp`. The path must be `/mcp`. The address must be loopback or another private address unless you set `ALLOW_PUBLIC_UPSTREAM=true`. |
+| `DATA_DIR` | The directory for `state.json`, `upstream-secret.json`, and `upstreams.json`. Init creates `./data` and writes its absolute path here. |
+
+The first WAHA's API key is also required. Put it in `DATA_DIR/upstream-secret.json`, which init creates. In WAHA, open the session, open Apps, create an MCP App, and copy that app's key. Use a scoped MCP App key. Leave the global WAHA API key out of this bridge.
+
+`UPSTREAM_API_KEY` is an optional second copy of that same key. Leave it unset when the secret file exists. If both are set, they must be identical.
+
+### Defaults you can leave alone
+
+| Variable | Default | What it is |
+|---|---|---|
+| `NODE_ENV` | `production` | `production` requires the certificate files and refuses plain HTTP. |
+| `MCP_PATH` | `/mcp` | The only accepted value. The first connector URL is `PUBLIC_ORIGIN/mcp`. |
+| `UPSTREAM_API_KEY_HEADER` | `X-Api-Key` | The header WAHA expects for the MCP App key. Change it when that WAHA is configured for a different header name. |
+| `UPSTREAM_DISPLAY_NAME` | `connected WhatsApp session` | The name shown on the consent screen for the first WAHA. You choose the words. |
+| `ALLOW_PUBLIC_UPSTREAM` | `false` | `true` allows a public WAHA address. TLS verification stays enabled. The value must be `true` or `false`. |
+| `ORIGIN_ALLOWLIST` | the public origin and `https://chatgpt.com` | Comma-separated browser origins allowed to call the bridge. No wildcards. |
+| `LOG_LEVEL` | `info` | One of `debug`, `info`, `warn`, or `error`. Logs omit tokens, passwords, and the WAHA key. |
+| `ENABLE_LOCAL_TEST_HTTP` | `false` | `true` serves plain HTTP and only on `127.0.0.1` or `::1`. Production refuses it. Leave it `false` on a server. |
+
+### More WAHAs
+
+Additional WAHAs are not environment variables. `npm run admin -- add-upstream ID` asks for that WAHA's MCP URL, a display name, and its MCP App key, then writes `DATA_DIR/upstreams.json`. Restart the bridge afterward. That connector URL is `PUBLIC_ORIGIN/mcp/ID`.
+
+### Doctor commands
+
+`npm start` does not read these. Set them in the environment for one `npm run doctor:remote` run.
+
+| Variable | Where it comes from |
+|---|---|
+| `DOCTOR_ORIGIN` | The public `https://` origin of a bridge that is already running. |
+| `DOCTOR_UPSTREAM_URL` | A WAHA MCP URL. The check sends only `initialize` and `tools/list`. |
+| `DOCTOR_UPSTREAM_API_KEY` | The MCP App key for that URL. Pass it in the environment, not as a command argument. |
+
+### Optional limits
+
+Leave these unset. Each value is an integer inside the range shown.
+
+| Variable | Default | Allowed range | Meaning |
+|---|---|---|---|
+| `CODE_TTL_SEC` | 120 | 30–600 | Lifetime of an authorization code. |
+| `ACCESS_TTL_SEC` | 900 | 60–3600 | Lifetime of an access token. |
+| `REFRESH_TTL_SEC` | 2592000 | 3600–7776000 | Lifetime of a refresh-token family, counted from its creation. |
+| `SESSION_IDLE_SEC` | 900 | 60–3600 | Browser login idle timeout. |
+| `SESSION_ABSOLUTE_SEC` | 28800 | 300–86400 | Browser login absolute timeout. |
+| `AUTH_REQUEST_TTL_SEC` | 600 | 60–1800 | How long the consent request stays valid. |
+| `MAX_REQUEST_BYTES` | 1048576 | 1024–8388608 | Largest accepted MCP request body. |
+| `MAX_STREAMS` | 8 | 1–64 | Concurrent upstream SSE streams from `GET /mcp`. |
+| `STREAM_IDLE_MS` | 120000 | 1000–1800000 | Idle limit for one stream. |
+| `STREAM_LIFETIME_MS` | 1800000 | 5000–3600000 | Absolute limit for one stream. |
+| `CONNECT_TIMEOUT_MS` | 5000 | 200–10000 | Upstream TCP connection timeout. |
+| `HEADER_TIMEOUT_MS` | 10000 | 200–60000 | Upstream response-header timeout. |
+| `BODY_TIMEOUT_MS` | 30000 | 200–120000 | Request body read timeout. |
+| `LOGIN_MAX_FAILURES` | 5 | 3–20 | Failed logins before a lockout. |
+| `LOGIN_WINDOW_SEC` | 900 | 60–3600 | Window that counts those failures. |
+| `LOGIN_LOCK_SEC` | 900 | 60–3600 | How long login stays locked. |
+| `TOKEN_MAX_PER_WINDOW` | 60 | 5–300 | Token-endpoint requests allowed in one window. |
+| `TOKEN_WINDOW_SEC` | 60 | 10–600 | Length of that window. |
+| `CIMD_CACHE_SEC` | 300 | 5–3600 | How long a fetched ChatGPT client document is cached. |
 
 ## Operate
 
