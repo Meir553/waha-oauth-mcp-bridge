@@ -213,13 +213,13 @@ export async function startBridge(deps) {
   const { readFile } = await import('node:fs/promises');
   const css = deps.css || await readFile(new URL('./web/styles.css', import.meta.url));
   const handler = createHandler({ ...deps, css });
-  const server = deps.config.testHttp
-    ? http.createServer(handler)
-    : https.createServer({
+  const server = deps.config.tls
+    ? https.createServer({
       key: deps.config.tls.keyPem,
       cert: deps.config.tls.certPem,
       minVersion: 'TLSv1.2',
-    }, handler);
+    }, handler)
+    : http.createServer(handler);
   server.requestTimeout = 0;
   server.headersTimeout = Math.max(deps.config.limits.headerTimeoutMs, 60_000);
   server.timeout = 0;

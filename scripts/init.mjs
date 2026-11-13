@@ -22,6 +22,15 @@ export async function runInit(options) {
   const header = answers.header || 'X-Api-Key';
   if (!/^[A-Za-z0-9-]{1,64}$/.test(header)) throw new Error('header name is invalid');
   if (typeof answers.apiKey !== 'string' || answers.apiKey.length < 8) throw new Error('API key is invalid');
+  if (Boolean(answers.certPath) !== Boolean(answers.keyPath)) {
+    throw new Error('TLS certificate and private key must both be set, or both left empty');
+  }
+  if (answers.listenPort) {
+    const port = Number(answers.listenPort);
+    if (!Number.isInteger(port) || String(port) !== String(answers.listenPort) || port < 1 || port > 65535) {
+      throw new Error('listen port is invalid');
+    }
+  }
   const dataDir = path.resolve(options.directory, answers.dataDir || 'data');
   const hashed = await hashPassword(answers.password);
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
@@ -39,10 +48,9 @@ export async function runInit(options) {
     'NODE_ENV=production',
     `PUBLIC_ORIGIN=${answers.publicOrigin}`,
     'MCP_PATH=/mcp',
-    `LISTEN_HOST=${answers.listenHost || '0.0.0.0'}`,
-    `LISTEN_PORT=${answers.listenPort || '443'}`,
-    `TLS_CERT_FILE=${answers.certPath}`,
-    `TLS_KEY_FILE=${answers.keyPath}`,
+    `LISTEN_HOST=${answers.certPath ? (answers.listenHost || '0.0.0.0') : '127.0.0.1'}`,
+    `LISTEN_PORT=${answers.listenPort || (answers.certPath ? '443' : '8787')}`,
+    ...(answers.certPath ? [`TLS_CERT_FILE=${answers.certPath}`, `TLS_KEY_FILE=${answers.keyPath}`] : []),
     `UPSTREAM_MCP_URL=${answers.upstreamUrl}`,
     `UPSTREAM_API_KEY_HEADER=${header}`,
     'ALLOW_PUBLIC_UPSTREAM=false',
@@ -57,7 +65,10 @@ export async function runInit(options) {
   if (process.platform === 'win32') {
     out.write('Windows does not apply POSIX modes. Restrict the ACLs for .env, data, and the TLS key to the operator account.\n');
   }
-  out.write(`Initialized ${username} at ${answers.publicOrigin}. Upstream ${answers.upstreamUrl}. Next: install the TLS files, then npm start.\n`);
+  const next = answers.certPath
+    ? 'Next: npm start.'
+    : `Next: point the reverse proxy at 127.0.0.1:${answers.listenPort || '8787'}, then npm start.`;
+  out.write(`Initialized ${username} at ${answers.publicOrigin}. Upstream ${answers.upstreamUrl}. ${next}\n`);
 }
 
 async function ask(rl, prompt) {
@@ -93,6 +104,7 @@ async function main() {
   let header;
   let apiKey;
   let publicOrigin;
+  let listenPort;
   let certPath;
   let keyPath;
   try {
@@ -103,14 +115,15 @@ async function main() {
     header = (await ask(rl, 'Upstream header [X-Api-Key]: ')) || 'X-Api-Key';
     apiKey = await askHidden(rl, 'Scoped MCP App key: ');
     publicOrigin = await ask(rl, 'Public origin: ');
-    certPath = await ask(rl, 'TLS certificate file: ');
-    keyPath = await ask(rl, 'TLS private key file: ');
+    listenPort = (await ask(rl, 'Local listen port [8787]: ')) || '8787';
+    certPath = await ask(rl, 'TLS certificate file (empty when Caddy terminates HTTPS): ');
+    keyPath = certPath ? await ask(rl, 'TLS private key file: ') : '';
   } finally {
     rl.close();
   }
   await runInit({
     directory: process.cwd(),
-    answers: { username, password, confirm, upstreamUrl, header, apiKey, publicOrigin, certPath, keyPath },
+    answers: { username, password, confirm, upstreamUrl, header, apiKey, publicOrigin, listenPort, certPath, keyPath },
   });
 }
 

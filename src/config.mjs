@@ -324,11 +324,18 @@ export async function loadConfig(env, options = {}) {
     authRequestMs: parseIntRange(env.AUTH_REQUEST_TTL_SEC, 600, 60, 1800, 'AUTH_REQUEST_TTL_SEC') * 1000,
   };
 
+  const certFile = (env.TLS_CERT_FILE || '').trim();
+  const keyFile = (env.TLS_KEY_FILE || '').trim();
+  if (Boolean(certFile) !== Boolean(keyFile)) {
+    throw new Error('TLS certificate and private key must both be set, or both left empty');
+  }
   let tls = null;
-  if (!testHttp) {
-    if (!env.TLS_CERT_FILE || !env.TLS_KEY_FILE) throw new Error('TLS certificate and private key are required');
-    const certPath = path.resolve(env.TLS_CERT_FILE);
-    const keyPath = path.resolve(env.TLS_KEY_FILE);
+  if (!testHttp && !certFile && listenHost !== '127.0.0.1' && listenHost !== '::1') {
+    throw new Error('Without TLS files, LISTEN_HOST must be 127.0.0.1 or ::1. Terminate HTTPS at the reverse proxy, or set TLS_CERT_FILE and TLS_KEY_FILE.');
+  }
+  if (!testHttp && certFile) {
+    const certPath = path.resolve(certFile);
+    const keyPath = path.resolve(keyFile);
     let certStat;
     let keyStat;
     try {

@@ -72,6 +72,9 @@ test('L-01 L-02 init stores scrypt and refuses overwrite', async () => {
     assert.equal(logs.join('').includes('scoped-key-value'), false);
     const secret = JSON.parse(await readFile(path.join(dir, 'data', 'upstream-secret.json'), 'utf8'));
     assert.equal(secret.apiKey, 'scoped-key-value');
+    const written = await readFile(path.join(dir, '.env'), 'utf8');
+    assert.match(written, /TLS_CERT_FILE=cert\.pem/);
+    assert.match(written, /LISTEN_HOST=0\.0\.0\.0/);
     await assert.rejects(() => runInit({
       directory: dir,
       stdout: { write() {} },
@@ -81,6 +84,28 @@ test('L-01 L-02 init stores scrypt and refuses overwrite', async () => {
         certPath: 'cert.pem', keyPath: 'key.pem',
       },
     }), /overwrite|exists/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('init behind a reverse proxy writes a loopback listener and no certificate paths', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'waha-init-proxy-'));
+  try {
+    await runInit({
+      directory: dir,
+      stdout: { write() {} },
+      answers: {
+        username: 'admin', password: 'correct-horse-battery', confirm: 'correct-horse-battery',
+        publicOrigin: 'https://mcp.example.com', upstreamUrl: 'http://127.0.0.1:9/mcp', apiKey: 'scoped-key-value',
+        listenPort: '8787', certPath: '', keyPath: '',
+      },
+    });
+    const written = await readFile(path.join(dir, '.env'), 'utf8');
+    assert.match(written, /LISTEN_HOST=127\.0\.0\.1/);
+    assert.match(written, /LISTEN_PORT=8787/);
+    assert.equal(written.includes('TLS_CERT_FILE'), false);
+    assert.equal(written.includes('TLS_KEY_FILE'), false);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -100,11 +125,15 @@ test('D-01 D-02 D-03 config fails closed', async () => {
     NODE_ENV: 'production',
   };
   await assert.rejects(() => loadConfig(base, { testMode: true, runtimeVersion: 'v16.20.2' }), /Node\.js 18/);
-  await assert.rejects(() => loadConfig(base), /TLS/);
+  const behindProxy = await loadConfig(base);
+  assert.equal(behindProxy.tls, null);
+  assert.equal(behindProxy.listenHost, '127.0.0.1');
+  assert.equal(behindProxy.hsts, true);
+  await assert.rejects(() => loadConfig({ ...base, LISTEN_HOST: '0.0.0.0' }), /127\.0\.0\.1/);
+  await assert.rejects(() => loadConfig({ ...base, TLS_CERT_FILE: 'cert.pem' }, { testMode: true, runtimeVersion: 'v18.0.0' }), /both be set/);
   await assert.rejects(() => loadConfig({ ...base, ENABLE_LOCAL_TEST_HTTP: 'true' }, { testMode: true, runtimeVersion: 'v18.0.0' }), /HTTP test mode/);
   await assert.rejects(() => loadConfig({ ...base, NODE_ENV: 'test', ENABLE_LOCAL_TEST_HTTP: 'true', UPSTREAM_MCP_URL: 'http://user:pass@127.0.0.1:9/mcp' }, { testMode: true, runtimeVersion: 'v18.0.0' }), /userinfo/);
   await assert.rejects(() => loadConfig({ ...base, NODE_ENV: 'test', ENABLE_LOCAL_TEST_HTTP: 'true', UPSTREAM_MCP_URL: 'http://8.8.8.8/mcp' }, { testMode: true, runtimeVersion: 'v18.0.0' }), /not private/);
-  await assert.rejects(() => loadConfig({ ...base, TLS_CERT_FILE: '', TLS_KEY_FILE: '' }, { testMode: true, runtimeVersion: 'v18.0.0' }), /TLS/);
   await rm(base.DATA_DIR, { recursive: true, force: true });
 });
 

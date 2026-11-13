@@ -8,7 +8,7 @@ One Node.js process. It is an OAuth authorization server for a single operator a
 
 - Node.js 18 or newer. `src/main.mjs` refuses older major versions. `npm start` reads `.env` itself, so it does not depend on `node --env-file`.
 - No npm packages. `npm` is only a script runner.
-- A publicly trusted TLS certificate for the public origin. The process terminates HTTPS itself.
+- A public HTTPS name. Caddy (or another reverse proxy on the same machine) holds the certificate. This process listens on a local port and does not need its own certificate.
 - One scoped WAHA MCP App key. Do not use the WAHA master key.
 - ChatGPT custom MCP with write-capable tools is documented by OpenAI as a Business, Enterprise, or Edu feature. A successful local build does not prove a particular ChatGPT account can connect.
 
@@ -20,11 +20,35 @@ One Node.js process. It is an OAuth authorization server for a single operator a
 node scripts/init.mjs
 ```
 
-Init asks for the operator username, a password of at least 16 characters, the public `https://` origin, the upstream `http://127.0.0.1:3000/mcp` style URL, the API key, and the certificate paths. It writes `data/state.json`, `data/upstream-secret.json`, and `.env`. It does not print the password or the key. Run it again only against an empty data directory; it refuses to overwrite an existing store.
+Init asks for the operator username, a password of at least 16 characters, the public `https://` origin, the WAHA URL, the API key, and a local port. Leave the certificate question empty when Caddy terminates HTTPS. It writes `data/state.json`, `data/upstream-secret.json`, and `.env`. It does not print the password or the key. Run it again only against an empty data directory; it refuses to overwrite an existing store.
 
-On Windows, restrict the ACLs for `.env`, `data/`, and the TLS private key to the operator account. POSIX modes are recorded as `0600` and `0700`, and Windows does not apply them.
+On Windows, restrict the ACLs for `.env` and `data/` to the operator account. POSIX modes are recorded as `0600` and `0700`, and Windows does not apply them.
 
-`npm start` reads `.env` from the directory where you start it. A variable already set in the process environment wins over the file. `npm run dev` forces loopback HTTP for that process only. Production is `npm start` with `NODE_ENV=production` and the certificate files.
+`npm start` reads `.env` from the directory where you start it. A variable already set in the process environment wins over the file. `npm run dev` forces loopback HTTP for that process only.
+
+## Caddy
+
+Pick any free local port, for example `8787`. Point Caddy at it and let Caddy get the certificate:
+
+```text
+mcp.example.com {
+	reverse_proxy 127.0.0.1:8787
+}
+```
+
+Leave Caddy's default `Host` header alone. The app checks that header against `PUBLIC_ORIGIN` and ignores `X-Forwarded-*`.
+
+The matching `.env` is:
+
+```text
+PUBLIC_ORIGIN=https://mcp.example.com
+LISTEN_HOST=127.0.0.1
+LISTEN_PORT=8787
+```
+
+Do not set `TLS_CERT_FILE` or `TLS_KEY_FILE`. The process then serves plain HTTP on loopback only. ChatGPT still uses `https://mcp.example.com/mcp`. Several apps on one machine each get their own port and their own Caddy site block.
+
+`LISTEN_HOST` must stay `127.0.0.1` or `::1` when this process has no certificate. That keeps the unauthenticated hop on the machine. Set `TLS_CERT_FILE` and `TLS_KEY_FILE` together only when this process itself terminates HTTPS, and then set `LISTEN_HOST=0.0.0.0` and `LISTEN_PORT` to the public port.
 
 ## Environment
 
@@ -34,11 +58,8 @@ The operator username and password are not environment variables. You choose the
 
 | Variable | Where it comes from |
 |---|---|
-| `PUBLIC_ORIGIN` | The public address of this bridge. You choose a DNS name you control, point its A or AAAA record at this machine, and write that name here as `https://` with no path and no trailing slash. Example: `https://mcp.example.com`. If the public port is not 443, include it, for example `https://mcp.example.com:8443`. The certificate must be issued for this hostname. ChatGPT's connector URL for the first WAHA is this origin plus `/mcp`. |
-| `LISTEN_HOST` | The address this process binds. Use `0.0.0.0` to listen on every IPv4 interface. Init writes that value. |
-| `LISTEN_PORT` | The TCP port this process binds. It defaults to `443` and must be the port in `PUBLIC_ORIGIN`, because this process terminates TLS itself. Binding port 443 usually requires root or another privilege. Init writes `443`. |
-| `TLS_CERT_FILE` | The PEM certificate chain for `PUBLIC_ORIGIN`. You get it from the certificate issuer, for example Let's Encrypt `fullchain.pem`. The path must be a regular file, and it must not be a symlink. |
-| `TLS_KEY_FILE` | The PEM private key that matches `TLS_CERT_FILE`, for example `privkey.pem` from the same issuance. The path must be a regular file, and it must not be a symlink. |
+| `PUBLIC_ORIGIN` | The HTTPS name Caddy serves, with no path and no trailing slash. Example: `https://mcp.example.com`. ChatGPT's connector URL for the first WAHA is this origin plus `/mcp`. |
+| `LISTEN_PORT` | The local port you chose for this app. Init asks for it and defaults to `8787`. It does not have to match the public port. |
 | `UPSTREAM_MCP_URL` | WAHA's MCP address for the first WhatsApp session. On the same machine this is usually `http://127.0.0.1:3000/mcp`. The path must be `/mcp`. The address must be loopback or another private address unless you set `ALLOW_PUBLIC_UPSTREAM=true`. |
 | `DATA_DIR` | The directory for `state.json`, `upstream-secret.json`, and `upstreams.json`. Init creates `./data` and writes its absolute path here. |
 
@@ -50,14 +71,17 @@ The first WAHA's API key is also required. Put it in `DATA_DIR/upstream-secret.j
 
 | Variable | Default | What it is |
 |---|---|---|
-| `NODE_ENV` | `production` | `production` requires the certificate files and refuses plain HTTP. |
+| `NODE_ENV` | `production` | Production allows loopback HTTP behind a reverse proxy and refuses `ENABLE_LOCAL_TEST_HTTP`. |
+| `LISTEN_HOST` | `127.0.0.1` when Caddy terminates HTTPS | Use `0.0.0.0` only when this process terminates TLS itself. |
 | `MCP_PATH` | `/mcp` | The only accepted value. The first connector URL is `PUBLIC_ORIGIN/mcp`. |
 | `UPSTREAM_API_KEY_HEADER` | `X-Api-Key` | The header WAHA expects for the MCP App key. Change it when that WAHA is configured for a different header name. |
 | `UPSTREAM_DISPLAY_NAME` | `connected WhatsApp session` | The name shown on the consent screen for the first WAHA. You choose the words. |
 | `ALLOW_PUBLIC_UPSTREAM` | `false` | `true` allows a public WAHA address. TLS verification stays enabled. The value must be `true` or `false`. |
 | `ORIGIN_ALLOWLIST` | the public origin and `https://chatgpt.com` | Comma-separated browser origins allowed to call the bridge. No wildcards. |
 | `LOG_LEVEL` | `info` | One of `debug`, `info`, `warn`, or `error`. Logs omit tokens, passwords, and the WAHA key. |
-| `ENABLE_LOCAL_TEST_HTTP` | `false` | `true` serves plain HTTP and only on `127.0.0.1` or `::1`. Production refuses it. Leave it `false` on a server. |
+| `TLS_CERT_FILE` | unset | PEM certificate chain, only when this process terminates HTTPS. Leave it empty behind Caddy. A regular file, not a symlink. |
+| `TLS_KEY_FILE` | unset | PEM private key matching `TLS_CERT_FILE`. Set both or neither. |
+| `ENABLE_LOCAL_TEST_HTTP` | `false` | Development-only plain HTTP. Production refuses it. Leave it `false` on a server. |
 
 ### More WAHAs
 
@@ -129,7 +153,7 @@ Give each ChatGPT connector one of those URLs. When that connector signs in, the
 
 `doctor:local` is an offline simulation with a fake upstream. `doctor:remote` talks to a deployed origin only when `DOCTOR_ORIGIN` is set. An upstream `initialize` and `tools/list` run only when both `DOCTOR_UPSTREAM_URL` and `DOCTOR_UPSTREAM_API_KEY` are in the environment. It refuses every other JSON-RPC method. Neither doctor proves a ChatGPT login.
 
-The Linux unit `systemd/waha-mcp-bridge.service` is a placeholder. Do not install it until the host, user, certificate, and state directory are chosen. On Windows, run `npm start` under a private account. Do not expose `data/` through a web server.
+The Linux unit `systemd/waha-mcp-bridge.service` is a placeholder. PM2 works as one instance with the project directory as its working directory, so `.env` loads. Do not expose `data/` through a web server.
 
 ## Public behavior
 
