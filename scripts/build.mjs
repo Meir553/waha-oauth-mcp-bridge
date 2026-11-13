@@ -132,7 +132,7 @@ async function main() {
   await writeFile(path.join(ROOT, 'dist', 'RUN.txt'), [
     'WAHA MCP OAuth Bridge',
     'Run with Node.js 18 or newer: npm start',
-    'Configure with: node scripts/init.mjs',
+    'Edit .env, then: node scripts/init.mjs',
     'This package contains no third-party JavaScript and no secrets.',
     '',
   ].join('\n'));

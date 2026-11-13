@@ -11,7 +11,7 @@ import { hashPassword } from '../src/crypto.mjs';
 import { isPrivateIp, loadConfig } from '../src/config.mjs';
 import { runAdmin } from '../scripts/admin.mjs';
 import { assertReadOnlyMethod } from '../scripts/doctor-remote.mjs';
-import { askHidden, runInit } from '../scripts/init.mjs';
+import { askHidden, describeEnvProblem, runInit } from '../scripts/init.mjs';
 import { atomicWriteJson, initializeStore, openStore } from '../src/store.mjs';
 import { createClock, testOperator } from './helpers.mjs';
 
@@ -33,6 +33,34 @@ test('init keeps a hidden answer out of the terminal echo', async () => {
   assert.match(shown, /Password: /);
   assert.equal(shown.includes('secret-value'), false);
   assert.match(shown, /\n/);
+});
+
+test('init explains a missing or invalid .env before asking for secrets', async () => {
+  const missing = await describeEnvProblem({});
+  assert.match(missing, /PUBLIC_ORIGIN/);
+  assert.match(missing, /LISTEN_PORT/);
+  assert.match(missing, /UPSTREAM_MCP_URL/);
+  const slash = await describeEnvProblem({
+    PUBLIC_ORIGIN: 'https://mcp.example.com/',
+    LISTEN_HOST: '127.0.0.1',
+    LISTEN_PORT: '8787',
+    UPSTREAM_MCP_URL: 'http://127.0.0.1:3000/mcp',
+  });
+  assert.match(slash, /slash at the end/);
+  const path = await describeEnvProblem({
+    PUBLIC_ORIGIN: 'https://mcp.example.com',
+    LISTEN_HOST: '127.0.0.1',
+    LISTEN_PORT: '8787',
+    UPSTREAM_MCP_URL: 'http://127.0.0.1:3000/api',
+  });
+  assert.match(path, /\/mcp/);
+  const ready = await describeEnvProblem({
+    PUBLIC_ORIGIN: 'https://mcp.example.com',
+    LISTEN_HOST: '127.0.0.1',
+    LISTEN_PORT: '8787',
+    UPSTREAM_MCP_URL: 'http://127.0.0.1:3000/mcp',
+  });
+  assert.equal(ready, '');
 });
 
 test('L-01 L-02 init stores scrypt and refuses overwrite', async () => {

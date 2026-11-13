@@ -15,22 +15,37 @@ One running copy can serve several WhatsApp accounts and several ChatGPT connect
 
 ## First-time setup
 
-From the project folder:
+Edit `.env` first. Copy the example if you do not have one yet:
+
+```text
+cp .env.example .env
+```
+
+On Windows that is `copy .env.example .env`. Set these lines and leave the rest alone when Caddy is in front:
+
+```text
+PUBLIC_ORIGIN=https://the-name-caddy-serves
+LISTEN_HOST=127.0.0.1
+LISTEN_PORT=8787
+UPSTREAM_MCP_URL=http://127.0.0.1:3000/mcp
+```
+
+`PUBLIC_ORIGIN` is the https address in the browser, with no path and no slash at the end. `LISTEN_PORT` is any free port on this machine. `UPSTREAM_MCP_URL` is the first WAHA. Leave the certificate lines blank. Do not put the WAHA key in this file.
+
+Then, from the project folder:
 
 ```text
 node scripts/init.mjs
 ```
 
-It asks a few questions:
+The script reads `.env` and does not ask for those settings again. It asks four things, and it says what each one is before you type:
 
-- A username, and a password of at least 16 characters. These are for the browser login page. They are not ChatGPT's password and not WAHA's key.
-- The public address, such as `https://mcp.example.com`. No path, no slash at the end.
-- The first WAHA address, usually `http://127.0.0.1:3000/mcp` when WAHA is on the same machine.
-- That WAHA's MCP App key.
-- A local port. Press Enter to use `8787`, or type another free port.
-- A certificate file. Press Enter. Caddy already has the certificate.
+1. Admin username. Press Enter for `admin`. This is the name on the admin page.
+2. Admin password, at least 16 characters. This is not the WAHA key and not your ChatGPT password. It stays hidden.
+3. The same password again.
+4. The MCP App key for the WAHA in `UPSTREAM_MCP_URL`. In WAHA, open that session, open Apps, create an MCP App, and paste that key. Not the master WAHA key.
 
-It writes `.env`, `data/state.json`, and `data/upstream-secret.json`. The key goes in the secret file. The password is stored as a hash. The command does not print either of them. Run it again only on an empty `data` folder. It will refuse to overwrite one that already exists.
+It saves the login and the key under `data/`. It does not change `.env`. If a line in `.env` is wrong, it says which line and shows an example, and it saves nothing. Run it again only on an empty `data` folder.
 
 Start it from the same folder, so it finds `.env`:
 
