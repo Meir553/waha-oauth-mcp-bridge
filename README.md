@@ -77,3 +77,9 @@ npm ls --all
 ```
 
 `npm run build` syntax-checks the source, runs the security scan and the test suite, and writes `dist/` without tests, data, or secrets. The packaged server starts on Node.js 18 or newer.
+
+## License
+
+Required Notice: Copyright Mayer Gottlieb (https://github.com/Meir553/waha-oauth-mcp-bridge)
+
+Personal use is allowed. Use by a charitable, educational, public-research, public-safety, public-health, environmental, or government organization is allowed. Commercial use is not allowed. The full terms are in `LICENSE` under the [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0).
