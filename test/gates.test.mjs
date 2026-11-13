@@ -61,6 +61,41 @@ test('init explains a missing or invalid .env before asking for secrets', async 
     UPSTREAM_MCP_URL: 'http://127.0.0.1:3000/mcp',
   });
   assert.equal(ready, '');
+  const publicWaha = await describeEnvProblem({
+    PUBLIC_ORIGIN: 'https://mcp.example.com',
+    LISTEN_HOST: '127.0.0.1',
+    LISTEN_PORT: '8787',
+    UPSTREAM_MCP_URL: 'https://8.8.8.8/mcp',
+    ALLOW_PUBLIC_UPSTREAM: 'true',
+  });
+  assert.equal(publicWaha, '');
+  const blocked = await describeEnvProblem({
+    PUBLIC_ORIGIN: 'https://mcp.example.com',
+    LISTEN_HOST: '127.0.0.1',
+    LISTEN_PORT: '8787',
+    UPSTREAM_MCP_URL: 'https://8.8.8.8/mcp',
+  });
+  assert.match(blocked, /private network/);
+});
+
+test('init keeps a public WAHA when that is allowed in the settings', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'waha-init-public-'));
+  try {
+    await runInit({
+      directory: dir,
+      stdout: { write() {} },
+      answers: {
+        username: 'admin', password: 'correct-horse-battery', confirm: 'correct-horse-battery',
+        publicOrigin: 'https://mcp.example.com', upstreamUrl: 'https://8.8.8.8/mcp', apiKey: 'scoped-key-value',
+        allowPublic: 'true', listenPort: '8787', certPath: '', keyPath: '',
+      },
+    });
+    const written = await readFile(path.join(dir, '.env'), 'utf8');
+    assert.match(written, /ALLOW_PUBLIC_UPSTREAM=true/);
+    assert.match(written, /UPSTREAM_MCP_URL=https:\/\/8\.8\.8\.8\/mcp/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test('L-01 L-02 init stores scrypt and refuses overwrite', async () => {

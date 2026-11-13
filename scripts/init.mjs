@@ -19,7 +19,8 @@ export async function runInit(options) {
   if (answers.password !== answers.confirm) throw new Error('passwords do not match');
   assertPasswordPolicy(answers.password);
   parsePublicOrigin(answers.publicOrigin);
-  await parseUpstreamUrl(answers.upstreamUrl, { allowPublic: false });
+  const allowPublic = answers.allowPublic === true || answers.allowPublic === 'true';
+  await parseUpstreamUrl(answers.upstreamUrl, { allowPublic });
   const header = answers.header || 'X-Api-Key';
   if (!/^[A-Za-z0-9-]{1,64}$/.test(header)) throw new Error('header name is invalid');
   if (typeof answers.apiKey !== 'string' || answers.apiKey.length < 8) throw new Error('API key is invalid');
@@ -55,7 +56,7 @@ export async function runInit(options) {
     ...(answers.certPath ? [`TLS_CERT_FILE=${answers.certPath}`, `TLS_KEY_FILE=${answers.keyPath}`] : []),
     `UPSTREAM_MCP_URL=${answers.upstreamUrl}`,
     `UPSTREAM_API_KEY_HEADER=${header}`,
-    'ALLOW_PUBLIC_UPSTREAM=false',
+    `ALLOW_PUBLIC_UPSTREAM=${allowPublic ? 'true' : 'false'}`,
     `DATA_DIR=${dataDir}`,
     'LOG_LEVEL=info',
     'ENABLE_LOCAL_TEST_HTTP=false',
@@ -172,14 +173,25 @@ async function ask(rl, prompt) {
  */
 export async function askHidden(rl, prompt) {
   const output = rl.output || stdout;
-  const previous = rl._writeToOutput;
-  rl._writeToOutput = (text) => {
-    if (typeof text === 'string' && /[\r\n]/.test(text)) output.write('\n');
+  const previousWriteToOutput = rl._writeToOutput;
+  const previousWrite = output.write.bind(output);
+  const showNewline = (text) => {
+    const value = Buffer.isBuffer(text) ? text.toString('utf8') : String(text ?? '');
+    if (/[\r\n]/.test(value)) previousWrite('\n');
+  };
+  rl._writeToOutput = showNewline;
+  output.write = (chunk, encoding, callback) => {
+    const value = Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk ?? '');
+    if (value === prompt || value.endsWith(prompt)) return previousWrite(chunk, encoding, callback);
+    if (/[\r\n]/.test(value)) return previousWrite('\n', encoding, callback);
+    if (typeof callback === 'function') callback();
+    return true;
   };
   try {
     return (await rl.question(prompt)).trim();
   } finally {
-    rl._writeToOutput = previous;
+    output.write = previousWrite;
+    rl._writeToOutput = previousWriteToOutput;
   }
 }
 
@@ -315,6 +327,7 @@ async function main() {
       upstreamUrl: fileEnv.UPSTREAM_MCP_URL,
       header: fileEnv.UPSTREAM_API_KEY_HEADER,
       apiKey,
+      allowPublic: fileEnv.ALLOW_PUBLIC_UPSTREAM === 'true' ? 'true' : 'false',
       listenHost: fileEnv.LISTEN_HOST,
       listenPort: fileEnv.LISTEN_PORT,
       certPath: fileEnv.TLS_CERT_FILE || '',
