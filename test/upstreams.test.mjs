@@ -56,7 +56,8 @@ test('each ChatGPT grant can reach only the WAHA it was approved for', async () 
 
     const mainList = await call(harness.client, main.token.access_token, '/mcp', 'tools/list');
     assert.equal(mainList.status, 200);
-    assert.equal(mainList.json().result.tools[0].name, 'get_chats');
+    assert.ok(mainList.json().result.tools.some((tool) => tool.name === 'search_tools'));
+    assert.equal(mainList.json().result.tools.some((tool) => tool.name === 'get_chats'), false);
     assert.equal(harness.waha.calls.at(-1).headers['x-api-key'], 'test-upstream-key-value');
 
     const beforeSales = sales.calls.length;
@@ -71,7 +72,8 @@ test('each ChatGPT grant can reach only the WAHA it was approved for', async () 
 
     const salesList = await call(other, salesGrant.token.access_token, '/mcp/sales', 'tools/list', { 'mcp-session-id': 'sess-fixed-1' });
     assert.equal(salesList.status, 200);
-    assert.equal(salesList.json().result.tools[0].name, 'sales_only');
+    assert.ok(salesList.json().result.tools.some((tool) => tool.name === 'search_tools'));
+    assert.equal(salesList.json().result.tools.some((tool) => tool.name === 'sales_only'), false);
     assert.equal(sales.calls.at(-1).headers['x-api-key'], 'sales-upstream-key-value');
     assert.equal(sales.calls.at(-1).headers.authorization, undefined);
 

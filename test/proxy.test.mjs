@@ -49,18 +49,49 @@ test('P-01 through P-05 and P-20 proxy and tool metadata', async () => {
       body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }),
     });
     const tools = list.json().result.tools;
-    assert.deepEqual(tools.map((item) => item.name), ['get_chats', 'send_message']);
-    assert.equal(tools[1].annotations.readOnlyHint, undefined);
-    assert.ok(tools[0]._meta.securitySchemes.some((scheme) => scheme.type === 'oauth2' && scheme.scopes.includes('mcp:access')));
-    assert.equal(tools[0]._meta.source, 'waha');
-    h.waha.control.tools.push({ name: 'brand_new_tool', description: 'new', inputSchema: { type: 'object' } });
+    assert.deepEqual(tools.map((item) => item.name), ['search_tools', 'call_tool']);
+    assert.equal(tools.some((item) => item.name === 'get_chats' || item.name === 'send_message'), false);
+    assert.ok(tools[0].securitySchemes.some((scheme) => scheme.type === 'oauth2' && scheme.scopes.includes('mcp:access')));
+    h.waha.control.tools.push({ name: 'send-text', description: 'Send a text message', inputSchema: { type: 'object' }, annotations: {}, _meta: { source: 'waha' } });
+    h.waha.control.tools.push({ name: 'brand_new_tool', description: 'send a postcard', inputSchema: { type: 'object' } });
     const again = await h.client.request({
       method: 'POST',
       path: '/mcp',
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', accept: 'application/json', 'mcp-session-id': 'sess-fixed-1' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'tools/list', params: {} }),
     });
-    assert.ok(again.json().result.tools.some((item) => item.name === 'brand_new_tool'));
+    const shown = again.json().result.tools;
+    assert.deepEqual(shown.map((item) => item.name), ['send-text', 'search_tools', 'call_tool']);
+    assert.equal(shown[0].annotations.readOnlyHint, undefined);
+    assert.equal(shown[0]._meta.source, 'waha');
+    assert.equal(shown.some((item) => item.name === 'brand_new_tool'), false);
+    const found = await h.client.request({
+      method: 'POST',
+      path: '/mcp',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', accept: 'application/json', 'mcp-session-id': 'sess-fixed-1' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'search_tools', arguments: { query: 'postcard' } } }),
+    });
+    assert.equal(found.json().result.isError, false);
+    assert.match(found.json().result.content[0].text, /brand_new_tool/);
+    assert.equal(found.json().result.content[0].text.includes('test-upstream-key-value'), false);
+    const missing = await h.client.request({
+      method: 'POST',
+      path: '/mcp',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', accept: 'application/json', 'mcp-session-id': 'sess-fixed-1' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'call_tool', arguments: { name: 'not_a_tool' } } }),
+    });
+    assert.equal(missing.json().result.isError, true);
+    const used = await h.client.request({
+      method: 'POST',
+      path: '/mcp',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', accept: 'application/json', 'mcp-session-id': 'sess-fixed-1' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'call_tool', arguments: { name: 'brand_new_tool', arguments: { text: 'WHATSAPP-PRIVATE-PHRASE-9f3a' } } } }),
+    });
+    assert.equal(used.status, 200);
+    const forwarded = JSON.parse(h.waha.calls.at(-1).body.toString('utf8'));
+    assert.equal(forwarded.method, 'tools/call');
+    assert.equal(forwarded.params.name, 'brand_new_tool');
+    assert.equal(h.capture.lines().join('').includes('WHATSAPP-PRIVATE-PHRASE-9f3a'), false);
     const call = await h.client.request({
       method: 'POST',
       path: '/mcp',
@@ -133,19 +164,23 @@ test('P-07 P-08 SSE passthrough and tools/list transform', async () => {
     assert.match(call.text, /שלום/);
     assert.match(call.headers['content-type'], /text\/event-stream/);
     h.waha.control.sseCall = false;
-    const payloadText = '{"jsonrpc":"2.0","id":5,"result":{"tools":[{"name":"get_chats","description":"d","inputSchema":{"type":"object"},"annotations":{}}]}}';
-    h.waha.control.listSse = () => [
-      Buffer.from(`id: evt-1\r\nevent: message\r\nretry: 5000\r\ndata: ${payloadText}\r\n\r\n`),
+    h.waha.control.listSse = (payload) => [
+      Buffer.from(`id: evt-1\r\nevent: message\r\nretry: 5000\r\ndata: ${JSON.stringify(payload)}\r\n\r\n`),
       Buffer.from(': ping\r\n\r\n'),
       Buffer.from('id: evt-2\r\nevent: ping\r\ndata: keep\r\n\r\n'),
     ];
     const list = await h.client.request({ method: 'POST', path: '/mcp', headers, body: JSON.stringify({ jsonrpc: '2.0', id: 5, method: 'tools/list', params: {} }) });
-    assert.match(list.text, /id: evt-1/);
-    assert.match(list.text, /retry: 5000/);
-    assert.match(list.text, /securitySchemes/);
-    assert.match(list.text, /id: evt-2/);
-    assert.match(list.text, /data: keep/);
-    assert.equal(list.text.includes('readOnlyHint'), false);
+    assert.match(list.headers['content-type'], /application\/json/);
+    assert.deepEqual(list.json().result.tools.map((item) => item.name), ['search_tools', 'call_tool']);
+    assert.equal(list.text.includes('get_chats'), false);
+    assert.equal(list.text.includes('data: keep'), false);
+    const found = await h.client.request({
+      method: 'POST',
+      path: '/mcp',
+      headers,
+      body: JSON.stringify({ jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'search_tools', arguments: { query: 'get_chats' } } }),
+    });
+    assert.match(found.json().result.content[0].text, /get_chats/);
   } finally {
     await h.close();
   }

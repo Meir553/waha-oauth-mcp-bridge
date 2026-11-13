@@ -113,6 +113,8 @@ You add ChatGPT from inside ChatGPT, not from this program. Create a custom conn
 
 ChatGPT opens your login page. Sign in with the username and password from setup. On the next page, type a name for this ChatGPT and click Allow once. The browser returns to ChatGPT. That connector can use that WhatsApp until you remove its access in the admin panel.
 
+ChatGPT is shown three everyday actions when this WhatsApp has them: the chat list, reading a chat, and sending a text. It can search for the others, such as images, groups, or contacts, and then use the tool it found. The full list is not loaded up front.
+
 ## Who can use what
 
 Each approval is one connector plus one WhatsApp.

@@ -7,6 +7,16 @@ import { isPrivateIp, originAllowed, pinUpstreamAddress } from '../config.mjs';
 import { headerCount, httpError, sendJson } from '../http.mjs';
 import { wwwAuthenticate } from '../oauth/metadata.mjs';
 import { authenticateBearer } from '../oauth/bearer.mjs';
+import {
+  cleanSearchQuery,
+  formatSearchResult,
+  isCallTool,
+  isSearchCall,
+  publicToolList,
+  readCallTool,
+  searchToolCatalog,
+  toolsFromResponse,
+} from './catalog.mjs';
 import { enrichToolsListPayload, transformSseToolsList } from './tool-metadata.mjs';
 
 const REQUEST_HEADERS = ['accept', 'content-type', 'mcp-session-id', 'mcp-protocol-version', 'last-event-id'];
@@ -82,6 +92,37 @@ export async function handleMcp(ctx, req, res) {
     if (allowed === 'cross') return sendJson(res, 403, { error: 'forbidden' }, { hsts: ctx.config.hsts, requestId: ctx.requestId });
   }
 
+  let serveSearch = '';
+  if (isSearchCall(rpc)) {
+    const query = cleanSearchQuery(rpc.params.arguments && rpc.params.arguments.query);
+    if (!query) return sendJson(res, 200, toolResult(rpc.id, 'Enter a word to search for, such as image, group, or contact.', true), rpcOpts(ctx));
+    serveSearch = query;
+    body = Buffer.from(JSON.stringify({ jsonrpc: '2.0', id: rpc.id, method: 'tools/list' }));
+  } else if (isCallTool(rpc)) {
+    const requested = readCallTool(rpc.params);
+    if (requested.error) return sendJson(res, 200, toolResult(rpc.id, requested.error, true), rpcOpts(ctx));
+    const listed = await bufferedPost(ctx, req, Buffer.from(JSON.stringify({ jsonrpc: '2.0', id: rpc.id, method: 'tools/list' })));
+    if (listed.error) {
+      return sendJson(res, listed.error, { error: listed.error === 504 ? 'gateway_timeout' : 'bad_gateway', requestId: ctx.requestId }, rpcOpts(ctx));
+    }
+    let catalog = null;
+    try {
+      catalog = toolsFromResponse(listed.body, mediaType(listed.headers['content-type']), rpc.id, ctx.config.limits.sseEventMaxBytes);
+    } catch {
+      catalog = null;
+    }
+    if (!catalog || !catalog.some((tool) => tool.name === requested.name)) {
+      return sendJson(res, 200, toolResult(rpc.id, 'That tool is not available. Use search_tools to find one.', true), rpcOpts(ctx));
+    }
+    ctx.aiAction.tool = requested.name;
+    body = Buffer.from(JSON.stringify({
+      jsonrpc: '2.0',
+      id: rpc.id,
+      method: 'tools/call',
+      params: { name: requested.name, arguments: requested.arguments },
+    }));
+  }
+
   if (expectsStream) {
     ctx.streams.active += 1;
     res.on('close', () => { ctx.streams.active = Math.max(0, ctx.streams.active - 1); });
@@ -155,8 +196,27 @@ export async function handleMcp(ctx, req, res) {
     await forgetSession(ctx, sessionHeader);
   }
   const responseHeaders = safeResponseHeaders(up.headers, ctx);
-  if (toolsList && (mediaType(up.headers['content-type']) === 'application/json' || mediaType(up.headers['content-type']) === 'text/event-stream')) {
+  const listing = toolsList || Boolean(serveSearch);
+  if (listing && (mediaType(up.headers['content-type']) === 'application/json' || mediaType(up.headers['content-type']) === 'text/event-stream')) {
     const buffered = await readLimited(up, ctx.config.limits.toolsListMaxBytes);
+    let catalog = null;
+    try {
+      catalog = toolsFromResponse(buffered, mediaType(up.headers['content-type']), rpc.id, ctx.config.limits.sseEventMaxBytes);
+    } catch {
+      return sendJson(res, 502, { error: 'bad_gateway', requestId: ctx.requestId }, rpcOpts(ctx));
+    }
+    if (serveSearch) {
+      if (!catalog) return sendJson(res, 200, toolResult(rpc.id, 'The WhatsApp tool list could not be read.', true), rpcOpts(ctx));
+      const text = redact(formatSearchResult(serveSearch, searchToolCatalog(catalog, serveSearch)), upstream.apiKey);
+      return sendJson(res, 200, toolResult(rpc.id, text, false), rpcOpts(ctx));
+    }
+    if (toolsList && catalog) {
+      return sendJson(res, up.statusCode || 200, {
+        jsonrpc: '2.0',
+        id: rpc.id,
+        result: { tools: publicToolList(catalog) },
+      }, rpcOpts(ctx));
+    }
     let output;
     try {
       if (mediaType(up.headers['content-type']) === 'text/event-stream') {
@@ -167,7 +227,7 @@ export async function handleMcp(ctx, req, res) {
         else output = buffered;
       }
     } catch {
-      return sendJson(res, 502, { error: 'bad_gateway', requestId: ctx.requestId }, { hsts: ctx.config.hsts, requestId: ctx.requestId });
+      return sendJson(res, 502, { error: 'bad_gateway', requestId: ctx.requestId }, rpcOpts(ctx));
     }
     responseHeaders['content-length'] = String(output.length);
     if (!res.headersSent) res.writeHead(up.statusCode || 502, responseHeaders);
@@ -346,6 +406,87 @@ async function forgetSession(ctx, sessionId) {
  */
 function currentUpstream(ctx) {
   return ctx.upstream || ctx.config.upstream;
+}
+
+/**
+ * A second POST used to read the tool catalog before call_tool is forwarded.
+ * @param {object} ctx
+ * @param {import('node:http').IncomingMessage} req
+ * @param {Buffer} body
+ */
+async function bufferedPost(ctx, req, body) {
+  const upstream = currentUpstream(ctx);
+  let pinned;
+  try {
+    pinned = await pinUpstreamAddress(upstream.hostname, {
+      allowPublic: upstream.allowPublic,
+      lookup: ctx.lookup,
+    });
+  } catch {
+    return { error: 502 };
+  }
+  if (!upstream.allowPublic && !isPrivateIp(pinned.address)) return { error: 502 };
+  const headers = buildUpstreamHeaders(req, body, upstream);
+  const lib = upstream.protocol === 'https:' ? https : http;
+  const upstreamReq = lib.request({
+    protocol: upstream.protocol,
+    hostname: pinned.address,
+    port: upstream.port,
+    method: 'POST',
+    path: '/mcp',
+    family: Number(pinned.family) || undefined,
+    setHost: false,
+    servername: upstream.protocol === 'https:' ? upstream.hostname : undefined,
+    headers,
+  });
+  ctx.inflight.add(upstreamReq);
+  upstreamReq.on('close', () => ctx.inflight.delete(upstreamReq));
+  const outcome = await waitForUpstream(upstreamReq, body, ctx);
+  if (!outcome.response) return { error: outcome.timeout ? 504 : 502 };
+  const up = outcome.response;
+  if (outcome.remoteAddress && !upstream.allowPublic && !isPrivateIp(outcome.remoteAddress)) {
+    up.resume();
+    upstreamReq.destroy();
+    return { error: 502 };
+  }
+  if ((up.statusCode >= 300 && up.statusCode < 400) || up.statusCode === 401 || up.statusCode === 403) {
+    up.resume();
+    return { error: 502 };
+  }
+  if (String(up.headers['content-encoding'] || 'identity').toLowerCase() !== 'identity') {
+    up.resume();
+    return { error: 502 };
+  }
+  try {
+    return { statusCode: up.statusCode || 200, headers: up.headers, body: await readLimited(up, ctx.config.limits.toolsListMaxBytes) };
+  } catch {
+    return { error: 502 };
+  }
+}
+
+/**
+ * @param {object} ctx
+ */
+function rpcOpts(ctx) {
+  return { hsts: ctx.config.hsts, requestId: ctx.requestId };
+}
+
+/**
+ * @param {string | number | null} id
+ * @param {string} text
+ * @param {boolean} isError
+ */
+function toolResult(id, text, isError) {
+  return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text }], isError } };
+}
+
+/**
+ * @param {string} text
+ * @param {string} secret
+ */
+function redact(text, secret) {
+  if (typeof secret !== 'string' || secret.length < 8) return text;
+  return text.split(secret).join('[redacted]');
 }
 
 /**
