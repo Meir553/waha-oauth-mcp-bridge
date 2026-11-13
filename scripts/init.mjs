@@ -64,53 +64,50 @@ async function ask(rl, prompt) {
   return (await rl.question(prompt)).trim();
 }
 
-async function askSecret(prompt) {
-  if (!stdin.isTTY) {
-    const rl = readline.createInterface({ input: stdin, output: stdout });
-    const value = (await rl.question(prompt)).trim();
-    rl.close();
-    return value;
+/**
+ * Read a secret on the same readline interface. Closing that interface and
+ * then reading raw stdin lets Node exit on a TTY, so the next line falls
+ * through to the shell. Muting echo keeps the process attached.
+ * @param {{ question: Function, _writeToOutput?: Function, output?: { write: Function } }} rl
+ * @param {string} prompt
+ */
+export async function askHidden(rl, prompt) {
+  const output = rl.output || stdout;
+  const previous = rl._writeToOutput;
+  rl._writeToOutput = (text) => {
+    if (typeof text === 'string' && /[\r\n]/.test(text)) output.write('\n');
+  };
+  try {
+    return (await rl.question(prompt)).trim();
+  } finally {
+    rl._writeToOutput = previous;
   }
-  stdout.write(prompt);
-  stdin.setRawMode(true);
-  return new Promise((resolve) => {
-    let value = '';
-    const onData = (buf) => {
-      const text = buf.toString('utf8');
-      if (text === '\u0003') process.exit(1);
-      if (text === '\r' || text === '\n') {
-        stdin.setRawMode(false);
-        stdin.off('data', onData);
-        stdout.write('\n');
-        resolve(value);
-        return;
-      }
-      if (text === '\u007f' || text === '\b') {
-        value = value.slice(0, -1);
-        return;
-      }
-      if (text >= ' ' ) value += text;
-    };
-    stdin.on('data', onData);
-  });
 }
 
 async function main() {
-  const rl = readline.createInterface({ input: stdin, output: stdout });
-  const username = (await ask(rl, 'Username [admin]: ')) || 'admin';
-  rl.close();
-  const password = await askSecret('Password (16+ characters, not echoed when possible): ');
-  const confirm = await askSecret('Password again: ');
-  const rl2 = readline.createInterface({ input: stdin, output: stdout });
-  const upstreamUrl = await ask(rl2, 'Upstream MCP URL: ');
-  const header = (await ask(rl2, 'Upstream header [X-Api-Key]: ')) || 'X-Api-Key';
-  rl2.close();
-  const apiKey = await askSecret('Scoped MCP App key: ');
-  const rl3 = readline.createInterface({ input: stdin, output: stdout });
-  const publicOrigin = await ask(rl3, 'Public origin: ');
-  const certPath = await ask(rl3, 'TLS certificate file: ');
-  const keyPath = await ask(rl3, 'TLS private key file: ');
-  rl3.close();
+  const rl = readline.createInterface({ input: stdin, output: stdout, terminal: Boolean(stdin.isTTY) });
+  let username;
+  let password;
+  let confirm;
+  let upstreamUrl;
+  let header;
+  let apiKey;
+  let publicOrigin;
+  let certPath;
+  let keyPath;
+  try {
+    username = (await ask(rl, 'Username [admin]: ')) || 'admin';
+    password = await askHidden(rl, 'Password (16+ characters, not echoed): ');
+    confirm = await askHidden(rl, 'Password again: ');
+    upstreamUrl = await ask(rl, 'Upstream MCP URL: ');
+    header = (await ask(rl, 'Upstream header [X-Api-Key]: ')) || 'X-Api-Key';
+    apiKey = await askHidden(rl, 'Scoped MCP App key: ');
+    publicOrigin = await ask(rl, 'Public origin: ');
+    certPath = await ask(rl, 'TLS certificate file: ');
+    keyPath = await ask(rl, 'TLS private key file: ');
+  } finally {
+    rl.close();
+  }
   await runInit({
     directory: process.cwd(),
     answers: { username, password, confirm, upstreamUrl, header, apiKey, publicOrigin, certPath, keyPath },

@@ -11,9 +11,29 @@ import { hashPassword } from '../src/crypto.mjs';
 import { isPrivateIp, loadConfig } from '../src/config.mjs';
 import { runAdmin } from '../scripts/admin.mjs';
 import { assertReadOnlyMethod } from '../scripts/doctor-remote.mjs';
-import { runInit } from '../scripts/init.mjs';
+import { askHidden, runInit } from '../scripts/init.mjs';
 import { atomicWriteJson, initializeStore, openStore } from '../src/store.mjs';
 import { createClock, testOperator } from './helpers.mjs';
+
+test('init keeps a hidden answer out of the terminal echo', async () => {
+  const chunks = [];
+  const rl = {
+    output: { write(text) { chunks.push(String(text)); } },
+    _writeToOutput(text) { this.output.write(text); },
+    question(prompt) {
+      this.output.write(prompt);
+      this._writeToOutput('secret-value');
+      this._writeToOutput('\n');
+      return Promise.resolve(' secret-value ');
+    },
+  };
+  const value = await askHidden(rl, 'Password: ');
+  assert.equal(value, 'secret-value');
+  const shown = chunks.join('');
+  assert.match(shown, /Password: /);
+  assert.equal(shown.includes('secret-value'), false);
+  assert.match(shown, /\n/);
+});
 
 test('L-01 L-02 init stores scrypt and refuses overwrite', async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'waha-init-'));
