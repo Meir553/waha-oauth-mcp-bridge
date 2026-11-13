@@ -29,7 +29,7 @@ export function renderLogin(view) {
   return layout({
     title: 'Sign in',
     body: `<h1>Sign in</h1>
-<p>This sign-in is only for the operator of this WhatsApp bridge.</p>
+<p>Sign in to let a ChatGPT use one WhatsApp. Use the username and password from setup.</p>
 ${alert}
 <form method="post" action="/login" accept-charset="utf-8">
 <label for="username">Username</label>
@@ -54,7 +54,7 @@ export function renderLoginForm(view) {
   return layout({
     title: 'Sign in',
     body: `<h1>Sign in</h1>
-<p>This sign-in is only for the operator of this WhatsApp bridge.</p>
+<p>Sign in to let a ChatGPT use one WhatsApp. Use the username and password from setup.</p>
 ${alert}
 <form method="post" action="/login" accept-charset="utf-8">
 <label for="username">Username</label>
@@ -98,20 +98,22 @@ export function renderConsent(view) {
  * @param {{ csrf: string, requestId: string, clientName: string, clientId: string, scopes: string[], upstreamName: string }} view
  */
 export function renderConsentForm(view) {
-  const scopes = view.scopes.map((scope) => `<li><code>${escapeHtml(scope)}</code></li>`).join('');
+  const reported = view.clientName && view.clientName !== 'ChatGPT'
+    ? `<p class="hint">ChatGPT calls this connection ${escapeHtml(view.clientName)}.</p>`
+    : '';
   return layout({
-    title: 'Approve connection',
-    body: `<h1>Approve connection</h1>
-<p>A client identifying itself as <strong>${escapeHtml(view.clientName)}</strong> is asking to use this bridge.</p>
-<p>Client identifier: <code>${escapeHtml(view.clientId)}</code></p>
-<p>Approving lets this client reach only ${escapeHtml(view.upstreamName)} at <code>${escapeHtml(view.upstreamPath || '')}</code>. Other WAHA connections on this bridge stay closed to this client. WhatsApp read or send permission is enforced by that WAHA MCP App key. Approval also issues a refresh token so the client can reconnect to this WAHA until you revoke the grant. Nothing is approved automatically.</p>
-<h2>Requested access</h2>
-<ul>${scopes}</ul>
+    title: 'Allow ChatGPT',
+    body: `<h1>Allow this ChatGPT</h1>
+<p>It is asking to use <strong>${escapeHtml(view.upstreamName)}</strong>.</p>
+${reported}
+<p>Give it a name you will recognize later, such as Bookkeeping or Personal. That name is only for you. Click Allow once. The page then returns to ChatGPT.</p>
 <form method="post" action="/oauth/consent" accept-charset="utf-8">
+<label for="label">Name</label>
+<input id="label" name="label" type="text" maxlength="80" autocomplete="off" placeholder="Bookkeeping" required>
 <input type="hidden" name="csrf" value="${escapeHtml(view.csrf)}">
 <input type="hidden" name="request_id" value="${escapeHtml(view.requestId)}">
-<button type="submit" name="decision" value="approve">Approve</button>
-<button type="submit" class="secondary" name="decision" value="deny">Deny</button>
+<button type="submit" name="decision" value="approve">Allow</button>
+<button type="submit" class="secondary" name="decision" value="deny">Don't allow</button>
 </form>
 <form method="post" action="/logout" accept-charset="utf-8" class="inline">
 <input type="hidden" name="csrf" value="${escapeHtml(view.csrf)}">
@@ -122,8 +124,8 @@ export function renderConsentForm(view) {
 
 export function renderLocalErrorPage() {
   return layout({
-    title: 'Request blocked',
-    body: `<h1>Request blocked</h1>
-<p>This authorization request cannot continue. Start again from the client that sent you here. No code was issued.</p>`,
+    title: 'Start again',
+    body: `<h1>Start again</h1>
+<p>This request cannot continue. Go back to ChatGPT and start the connection again.</p>`,
   });
 }

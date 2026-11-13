@@ -160,10 +160,11 @@ test('C-07 C-08 C-09 C-10 metadata failure, escaping, iss, and flow isolation', 
     const consent = await h.client.request({ path: '/oauth/consent' });
     assert.equal(consent.text.includes('<script'), false);
     assert.match(consent.text, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+    assert.match(consent.text, /name="label"/);
     const approved = await h.client.request({
       method: 'POST',
       path: '/oauth/consent',
-      form: { csrf: hidden(consent.text, 'csrf'), request_id: hidden(consent.text, 'request_id'), decision: 'approve' },
+      form: { csrf: hidden(consent.text, 'csrf'), request_id: hidden(consent.text, 'request_id'), decision: 'approve', label: 'Bookkeeping' },
     });
     assert.match(consent.headers['content-security-policy'], /form-action 'self' https:\/\/chatgpt\.com/);
     const location = new URL(approved.headers.location);
@@ -177,6 +178,7 @@ test('C-07 C-08 C-09 C-10 metadata failure, escaping, iss, and flow isolation', 
     assert.equal(location.searchParams.get('iss'), 'https://mcp.test.local');
     assert.equal(location.searchParams.get('state'), 'keep me');
     assert.equal(location.hash, '');
+    assert.ok(Object.values(h.store.read().grants).some((grant) => grant.label === 'Bookkeeping'));
     assert.equal(h.capture.lines().join('').includes('keep me'), false);
   } finally {
     await h.close();

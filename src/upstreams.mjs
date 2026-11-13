@@ -25,6 +25,16 @@ export function cleanDisplayName(value) {
 }
 
 /**
+ * Operator-facing name for one ChatGPT connector. Blank becomes the fallback.
+ * @param {unknown} value
+ * @param {string} [fallback]
+ */
+export function connectorLabel(value, fallback = 'ChatGPT') {
+  const name = String(value ?? '').replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, 80);
+  return name || fallback;
+}
+
+/**
  * @param {unknown} key
  */
 export function assertApiKey(key) {

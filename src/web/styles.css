@@ -122,6 +122,15 @@ body.app { min-height: 100vh; }
 }
 .entry h3 { margin: 0 0 0.35rem; font-size: 1.05rem; }
 .entry p { margin: 0 0 0.6rem; }
+.entry > button { margin-right: 0.5rem; }
+.name-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0 0 0.6rem;
+}
+.name-form input { margin: 0; width: auto; flex: 1; min-width: 0; }
+.name-form button { width: auto; white-space: nowrap; }
 .notice { width: min(76rem, calc(100% - 2rem)); margin: 1rem auto 0; min-height: 1.25rem; }
 .notice.alert { padding: 0.75rem 1rem; border-radius: 10px; }
 details { margin-top: 1.25rem; }
@@ -165,12 +174,13 @@ summary { cursor: pointer; font-weight: 650; }
   font-size: 0.92rem;
 }
 .log li {
-  display: grid;
-  grid-template-columns: 5.5rem minmax(0, 1fr) minmax(0, 1fr) auto;
-  gap: 0.75rem;
-  padding: 0.35rem 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.85rem;
+  padding: 0.4rem 0;
   border-top: 1px solid #292524;
 }
+.log time { color: #a8a29e; }
 .log .muted { display: block; color: #a8a29e; border: 0; }
 .ok { color: #bef264; }
 .bad { color: #fca5a5; }

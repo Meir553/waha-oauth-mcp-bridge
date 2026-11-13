@@ -70,6 +70,7 @@ function sanitize(fields, id, now) {
     ts: new Date(now).toISOString(),
     upstreamId: token(source.upstreamId, 32),
     grantId: hexId(source.grantId),
+    label: plainLabel(source.label),
     method: token(source.method, 64),
     tool: token(source.tool, 80),
     status: Number.isInteger(source.status) && source.status >= 0 && source.status <= 599 ? source.status : 0,
@@ -80,6 +81,11 @@ function sanitize(fields, id, now) {
  * @param {unknown} value
  * @param {number} max
  */
+function plainLabel(value) {
+  if (typeof value !== 'string') return '';
+  return value.replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, 80);
+}
+
 function token(value, max) {
   if (typeof value !== 'string') return '';
   const clean = value.replace(/[^A-Za-z0-9._:/-]/g, '').slice(0, max);

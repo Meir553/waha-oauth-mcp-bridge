@@ -9,7 +9,7 @@ export function renderAdminLogin(view) {
   return layout({
     title: 'Admin',
     body: `<h1>Admin</h1>
-<p>Sign in with the username and password from setup. This is the control panel for your WhatsApps and the ChatGPT approvals.</p>
+<p>Sign in to manage your WhatsApps and the ChatGPTs allowed to use them.</p>
 ${alert}
 <form method="post" action="/admin/login" accept-charset="utf-8">
 <label for="username">Username</label>
@@ -51,14 +51,14 @@ export function renderAdminApp(view) {
 <div class="workspace">
 <section class="sheet" aria-labelledby="accounts-title">
 <h2 id="accounts-title">WhatsApps</h2>
-<p>Each one has its own ChatGPT address. The first one comes from setup. Extra ones you add here are ready as soon as you save them.</p>
+<p>Each WhatsApp has one address. Paste that address into a ChatGPT connector.</p>
 <div id="accounts"></div>
-<h2>Add a WhatsApp</h2>
+<h3>Add a WhatsApp</h3>
 <form id="add-form">
 <label for="short-name">Short name</label>
 <input id="short-name" name="id" required maxlength="32" autocomplete="off" placeholder="sales">
-<p class="hint">Lowercase letters, numbers, and hyphens. It becomes part of the address, such as /mcp/sales.</p>
-<label for="display-name">Name on the approval page</label>
+<p class="hint">Letters, numbers, and hyphens. Shows up in the address as /mcp/sales.</p>
+<label for="display-name">Name people see when they approve</label>
 <input id="display-name" name="displayName" required maxlength="80" autocomplete="off" placeholder="Sales WhatsApp">
 <label for="waha-url">WAHA address</label>
 <input id="waha-url" name="url" required maxlength="512" autocomplete="off" placeholder="http://127.0.0.1:3000/mcp" spellcheck="false">
@@ -68,12 +68,11 @@ export function renderAdminApp(view) {
 </form>
 </section>
 <section class="sheet" aria-labelledby="approvals-title">
-<h2 id="approvals-title">ChatGPT approvals</h2>
-<p>Each approval is one ChatGPT connector plus one WhatsApp. Cutting one off leaves the others alone.</p>
+<h2 id="approvals-title">ChatGPTs</h2>
+<p>Each row is one ChatGPT that you allowed to use one WhatsApp. Rename it here if you need to.</p>
 <div id="approvals"></div>
-<button type="button" class="secondary" id="revoke-all">Cut off every approval</button>
 <details>
-<summary>Change password</summary>
+<summary>Password and access</summary>
 <form id="password-form">
 <label for="current-password">Current password</label>
 <input id="current-password" name="current" type="password" required minlength="16" maxlength="256" autocomplete="current-password">
@@ -83,18 +82,19 @@ export function renderAdminApp(view) {
 <input id="confirm-password" name="confirm" type="password" required minlength="16" maxlength="256" autocomplete="new-password">
 <button type="submit">Change password</button>
 </form>
+<button type="button" class="secondary" id="revoke-all">Remove every ChatGPT</button>
 </details>
 </section>
 <section class="activity" aria-labelledby="activity-title">
 <div class="activity-head">
 <div>
-<h2 id="activity-title">Assistant activity</h2>
-<p>Live. This list does not reload the page.</p>
+<h2 id="activity-title">Activity</h2>
+<p>Updates as ChatGPT works. The page stays put.</p>
 </div>
 <p class="live" id="live"><span class="dot"></span><span id="live-label">Connecting</span></p>
 </div>
 <ol id="log" class="log">
-<li class="muted" id="log-empty">Nothing yet. When a connected ChatGPT uses a WhatsApp, it shows up here. Message text and keys stay off this screen.</li>
+<li class="muted" id="log-empty">No activity yet. Message text and keys are not shown.</li>
 </ol>
 </section>
 </div>

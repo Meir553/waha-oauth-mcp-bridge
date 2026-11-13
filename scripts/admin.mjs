@@ -31,7 +31,7 @@ export async function runAdmin(options) {
     const definitions = await readUpstreamDefinitions(path.join(dataDir, 'upstreams.json'));
     const grants = Object.values(state.grants).map((grant) => ({
       grantId: grant.grantId,
-      client: grant.clientDisplay || 'client',
+      client: grant.label || grant.clientDisplay || 'client',
       upstreamId: grant.upstreamId || null,
       createdAt: grant.createdAt,
       revoked: Boolean(grant.revokedAt),

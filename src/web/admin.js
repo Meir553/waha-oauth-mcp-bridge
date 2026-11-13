@@ -44,18 +44,30 @@
       title.textContent = item.name;
       const address = document.createElement('p');
       const label = document.createElement('span');
-      label.textContent = 'ChatGPT address ';
+      label.textContent = 'Connector address ';
       const code = document.createElement('code');
       code.textContent = item.url;
       address.append(label, code);
-      card.append(title, address);
+      const copy = document.createElement('button');
+      copy.type = 'button';
+      copy.className = 'secondary';
+      copy.textContent = 'Copy address';
+      copy.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(item.url);
+          say('Address copied.');
+        } catch {
+          say('Select the address and copy it.', true);
+        }
+      });
+      card.append(title, address, copy);
       if (item.id !== 'default') {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'secondary';
         button.textContent = 'Remove';
         button.addEventListener('click', async () => {
-          if (!window.confirm('Remove ' + item.name + ' and cut off its approvals?')) return;
+          if (!window.confirm('Remove ' + item.name + '? ChatGPTs using it lose access.')) return;
           try {
             const payload = await post('/admin/api/upstream/remove', { id: item.id });
             if (payload) {
@@ -83,33 +95,56 @@
     if (!active.length) {
       const empty = document.createElement('p');
       empty.className = 'hint';
-      empty.textContent = 'No approvals yet. Add a connector in ChatGPT, paste one of the addresses above, and approve it when the login page opens.';
+      empty.textContent = 'None yet. In ChatGPT, create a connector, paste an address from the left, then allow it and give it a name.';
       approvals.append(empty);
       return;
     }
     for (const item of active) {
       const card = document.createElement('article');
       card.className = 'entry';
-      const title = document.createElement('h3');
-      title.textContent = item.client || 'ChatGPT';
       const line = document.createElement('p');
-      line.textContent = 'Can use ' + (names.get(item.upstreamId) || item.upstreamId || 'a WhatsApp') + '.';
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'secondary';
-      button.textContent = 'Cut off';
-      button.addEventListener('click', async () => {
+      line.textContent = 'Uses ' + (names.get(item.upstreamId) || item.upstreamId || 'a WhatsApp') + '.';
+      const form = document.createElement('form');
+      form.className = 'name-form';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.maxLength = 80;
+      input.value = item.client || 'ChatGPT';
+      input.setAttribute('aria-label', 'Name');
+      const save = document.createElement('button');
+      save.type = 'submit';
+      save.className = 'secondary';
+      save.textContent = 'Save name';
+      form.append(input, save);
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
         try {
-          const payload = await post('/admin/api/revoke', { grantId: item.grantId });
+          const payload = await post('/admin/api/rename', { grantId: item.grantId, label: input.value });
           if (payload) {
             renderState(payload.state);
-            say('That approval was cut off.');
+            say('Name saved.');
           }
         } catch (err) {
           say(err.message, true);
         }
       });
-      card.append(title, line, button);
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'secondary';
+      button.textContent = 'Remove access';
+      button.addEventListener('click', async () => {
+        if (!window.confirm('Remove access for ' + (item.client || 'this ChatGPT') + '?')) return;
+        try {
+          const payload = await post('/admin/api/revoke', { grantId: item.grantId });
+          if (payload) {
+            renderState(payload.state);
+            say('Access removed.');
+          }
+        } catch (err) {
+          say(err.message, true);
+        }
+      });
+      card.append(form, line, button);
       approvals.append(card);
     }
   }
@@ -131,6 +166,8 @@
     const when = document.createElement('time');
     when.dateTime = event.ts;
     when.textContent = String(event.ts || '').slice(11, 19);
+    const who = document.createElement('span');
+    who.textContent = event.label || 'ChatGPT';
     const where = document.createElement('span');
     where.textContent = names.get(event.upstreamId) || event.upstreamId || 'WhatsApp';
     const what = document.createElement('span');
@@ -139,7 +176,7 @@
     const ok = event.status >= 200 && event.status < 300;
     result.className = ok ? 'ok' : 'bad';
     result.textContent = ok ? 'ok' : 'failed';
-    row.append(when, where, what, result);
+    row.append(when, who, where, what, result);
     log.append(row);
     while (log.children.length > 400) log.removeChild(log.firstChild);
     if (stick) log.scrollTop = log.scrollHeight;
@@ -174,19 +211,19 @@
       if (!payload) return;
       form.reset();
       renderState(payload.state);
-      say('WhatsApp added. Use its ChatGPT address in a new connector.');
+      say('WhatsApp added. Copy its address into a new ChatGPT connector.');
     } catch (err) {
       say(err.message, true);
     }
   });
 
   document.getElementById('revoke-all').addEventListener('click', async () => {
-    if (!window.confirm('Cut off every ChatGPT approval?')) return;
+    if (!window.confirm('Remove access for every ChatGPT?')) return;
     try {
       const payload = await post('/admin/api/revoke-all', {});
       if (payload) {
         renderState(payload.state);
-        say('Every approval was cut off.');
+        say('Every ChatGPT was removed.');
       }
     } catch (err) {
       say(err.message, true);

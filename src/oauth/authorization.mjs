@@ -4,6 +4,7 @@ import { COOKIE, clearCookie, parseForm, parseQuery, readCookies, sendHtml, send
 import { beginLoginAttempt, hashIp, recordLoginFailure } from '../rate-limit.mjs';
 import { classifyClientId, isRedirectStructurallyAllowed } from './cimd.mjs';
 import { parseScope } from './metadata.mjs';
+import { connectorLabel } from '../upstreams.mjs';
 import { layout, renderConsentForm, renderLocalErrorPage, renderLoginForm } from '../web/login.mjs';
 
 const issuedConsents = new Map();
@@ -180,6 +181,7 @@ export async function handleConsentGet(ctx, req, res) {
 export async function handleConsentPost(ctx, req, res) {
   const form = parseForm(ctx.body, { maxPairs: 8, maxKey: 32, maxValue: 256 });
   const decision = form.get('decision');
+  const label = connectorLabel(form.get('label'));
   const view = await consentContext(ctx, req, form.get('csrf') || '', form.get('request_id') || '');
   if (!view.ok) {
     const again = view.sessionId ? recallConsent(ctx, view.sessionId, view.requestId) : null;
@@ -214,6 +216,7 @@ export async function handleConsentPost(ctx, req, res) {
       revokedAt: null,
       expiresAt: null,
       clientDisplay: pending.clientDisplay,
+      label,
     };
     const code = randomToken(32);
     draft.authorizationCodes[sha256Hex(code)] = {
@@ -259,7 +262,7 @@ export async function handleLogout(ctx, req, res) {
   clearCookie(res, COOKIE.pending);
   return sendHtml(res, 200, layout({
     title: 'Signed out',
-    body: '<h1>Signed out</h1><p>The browser session for this bridge has been erased.</p>',
+    body: '<h1>Signed out</h1><p>You are signed out.</p>',
   }), { hsts: ctx.config.hsts, requestId: ctx.requestId });
 }
 

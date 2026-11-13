@@ -99,9 +99,11 @@ export function createHandler(deps) {
       sendJson(res, 500, { error: 'internal_error', requestId }, { hsts: deps.config.hsts, requestId });
     } finally {
       if (ctx.aiAction && deps.activity) {
+        const grant = ctx.aiAction.grantId ? deps.store.read().grants[ctx.aiAction.grantId] : null;
         deps.activity.record({
           upstreamId: ctx.aiAction.upstreamId,
           grantId: ctx.aiAction.grantId,
+          label: grant ? (grant.label || grant.clientDisplay || '') : '',
           method: ctx.aiAction.method,
           tool: ctx.aiAction.tool,
           status: res.statusCode || 0,

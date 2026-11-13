@@ -31,7 +31,7 @@ test('each ChatGPT grant can reach only the WAHA it was approved for', async () 
     assert.match(main.consent, /connected WhatsApp session/);
     assert.equal(main.consent.includes('/mcp/sales'), false);
     assert.match(salesGrant.consent, /Sales WhatsApp/);
-    assert.match(salesGrant.consent, /\/mcp\/sales/);
+    assert.equal(salesGrant.consent.includes('connected WhatsApp session'), false);
     const grants = Object.values(harness.store.read().grants);
     assert.ok(grants.some((grant) => grant.upstreamId === 'default' && grant.resource === harness.config.resource));
     assert.ok(grants.some((grant) => grant.upstreamId === 'sales' && grant.resource === SALES_RESOURCE));

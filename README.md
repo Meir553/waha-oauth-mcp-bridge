@@ -57,11 +57,11 @@ Then open `https://mcp.example.com/admin` and sign in with that same username an
 
 ## Admin panel
 
-The panel is where you add WhatsApps, see which ChatGPT connectors you have approved, and cut one off. Saving a WhatsApp in the panel makes it available immediately. You do not have to restart.
+The panel is where you add WhatsApps, name each ChatGPT, and remove access. Saving a WhatsApp in the panel makes it available immediately. You do not have to restart.
 
-The activity list on the right updates on its own. New lines are added in place. The page does not reload, and the list does not jump while you are reading older lines. It shows which WhatsApp was used, which tool ran, and whether it worked. Message text and keys are not written there.
+The activity list on the right updates on its own. New lines are added in place. The page does not reload, and the list does not jump while you are reading older lines. Each line shows the ChatGPT name, the WhatsApp, the tool, and whether it worked. Message text and keys are not written there.
 
-Adding a ChatGPT is still done inside ChatGPT. Copy the address shown for that WhatsApp, paste it into a new connector, and approve the login. One ChatGPT can hold two connectors when it should use two WhatsApps. Two ChatGPTs can use the same address when they should share one WhatsApp.
+Adding a ChatGPT is still done inside ChatGPT. Copy the address shown for that WhatsApp and paste it into a new connector. On the approval page, type a name such as Bookkeeping. You can change that name later in the panel. One ChatGPT can hold two connectors when it should use two WhatsApps. Two ChatGPTs can use the same address when they should share one WhatsApp.
 
 PM2 is fine. Use one instance, and set the working directory to this project. A second copy will refuse to start because only one process may write `data/`.
 
@@ -111,7 +111,7 @@ Each WhatsApp gets its own address. The key for an added WhatsApp is stored in `
 
 You add ChatGPT from inside ChatGPT, not from this program. Create a custom connector and paste one address from above.
 
-ChatGPT opens your login page. Sign in with the username and password from setup, read the page, and approve it. The page names the WhatsApp. Approving lets that connector use that WhatsApp until you take it back.
+ChatGPT opens your login page. Sign in with the username and password from setup. On the next page, type a name for this ChatGPT and click Allow once. The browser returns to ChatGPT. That connector can use that WhatsApp until you remove its access in the admin panel.
 
 ## Who can use what
 

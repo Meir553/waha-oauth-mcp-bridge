@@ -8,6 +8,7 @@ import {
   assertApiKey,
   assertUpstreamId,
   cleanDisplayName,
+  connectorLabel,
   installRegistry,
   readUpstreamDefinitions,
   registerUpstreams,
@@ -213,6 +214,26 @@ export function createAdmin(deps) {
     }
   }
 
+  async function handleRename(ctx, req, res) {
+    const auth = await requireSession(ctx, req, true);
+    if (!auth.session) return sendJson(res, auth.status, { error: auth.error }, jsonOpts(ctx, auth.headers));
+    try {
+      const body = readJson(ctx, req);
+      const grantId = String(body.grantId || '');
+      if (!/^[a-f0-9]{8,64}$/.test(grantId)) throw new Error('That approval was not found.');
+      const label = connectorLabel(body.label, '');
+      if (!label) throw new Error('Enter a name for this ChatGPT.');
+      await ctx.store.transaction(async (draft) => {
+        const grant = draft.grants[grantId];
+        if (!grant || grant.revokedAt) throw new Error('That approval was not found.');
+        grant.label = label;
+      });
+      return sendJson(res, 200, { ok: true, state: snapshot(ctx) }, jsonOpts(ctx));
+    } catch (err) {
+      return sendJson(res, 400, { error: explain(err) }, jsonOpts(ctx));
+    }
+  }
+
   async function handleRevokeAll(ctx, req, res) {
     const auth = await requireSession(ctx, req, true);
     if (!auth.session) return sendJson(res, auth.status, { error: auth.error }, jsonOpts(ctx, auth.headers));
@@ -292,6 +313,7 @@ export function createAdmin(deps) {
       '/admin/api/upstream': { POST: handleAdd },
       '/admin/api/upstream/remove': { POST: handleRemove },
       '/admin/api/revoke': { POST: handleRevoke },
+      '/admin/api/rename': { POST: handleRename },
       '/admin/api/revoke-all': { POST: handleRevokeAll },
       '/admin/api/password': { POST: handlePassword },
       '/admin.js': { GET: (_ctx, _req, res) => sendScript(res, deps.script) },
@@ -358,7 +380,7 @@ function snapshot(ctx) {
   const names = new Map(ctx.config.upstreams.map((item) => [item.id, item.displayName]));
   const grants = Object.values(state.grants).map((grant) => ({
     grantId: grant.grantId,
-    client: grant.clientDisplay || 'ChatGPT',
+    client: grant.label || grant.clientDisplay || 'ChatGPT',
     upstreamId: grant.upstreamId || '',
     upstreamName: names.get(grant.upstreamId) || grant.upstreamId || '',
     createdAt: grant.createdAt,
@@ -415,6 +437,7 @@ function explain(err) {
     ['path must be /mcp', 'The WAHA address has to end in /mcp.'],
     ['userinfo', 'The WAHA address cannot contain a username or password.'],
     ['not found', 'That approval was not found.'],
+    ['Enter a name', 'Enter a name for this ChatGPT.'],
     ['not in the list', 'That WhatsApp is not in the list.'],
     ['already in use', 'That short name is already in use.'],
     ['do not match', 'The new passwords do not match.'],

@@ -11,14 +11,17 @@ test('activity log keeps the tool name and drops message text', () => {
     grantId: 'ab'.repeat(16),
     method: 'tools/call',
     tool: 'send_message',
+    label: 'Book keeping',
     status: 200,
     arguments: { text: 'WHATSAPP-PRIVATE-PHRASE-9f3a' },
     apiKey: 'test-upstream-key-value',
   });
   assert.equal(event.tool, 'send_message');
+  assert.equal(event.label, 'Book keeping');
   assert.equal(event.arguments, undefined);
   assert.equal(JSON.stringify(event).includes('WHATSAPP-PRIVATE-PHRASE-9f3a'), false);
   assert.equal(JSON.stringify(event).includes('test-upstream-key-value'), false);
+  assert.equal(log.record({ label: 'A\u0000B', status: 200 }).label, 'AB');
   log.close();
 });
 
@@ -45,7 +48,7 @@ test('admin panel manages WhatsApps and streams assistant actions without a page
     assert.equal(good.status, 303);
     const page = await h.client.request({ path: '/admin' });
     assert.equal(page.status, 200);
-    assert.match(page.text, /Assistant activity/);
+    assert.match(page.text, /id="activity-title">Activity/);
     assert.match(page.text, /src="\/admin\.js"/);
     assert.match(page.headers['content-security-policy'], /script-src 'self'/);
     assert.match(page.headers['content-security-policy'], /connect-src 'self'/);
@@ -105,6 +108,22 @@ test('admin panel manages WhatsApps and streams assistant actions without a page
     const listed = await h.client.request({ path: '/admin/api/state' });
     const liveGrant = listed.json().grants.find((item) => !item.revoked);
     assert.ok(liveGrant);
+    const renamed = await h.client.request({
+      method: 'POST',
+      path: '/admin/api/rename',
+      headers: { 'content-type': 'application/json', 'x-csrf-token': csrf },
+      body: JSON.stringify({ grantId: liveGrant.grantId, label: 'Bookkeeping' }),
+    });
+    assert.equal(renamed.status, 200, renamed.text);
+    assert.equal(renamed.json().state.grants.find((item) => item.grantId === liveGrant.grantId).client, 'Bookkeeping');
+    assert.equal(renamed.text.includes('test-upstream-key-value'), false);
+    const blank = await h.client.request({
+      method: 'POST',
+      path: '/admin/api/rename',
+      headers: { 'content-type': 'application/json', 'x-csrf-token': csrf },
+      body: JSON.stringify({ grantId: liveGrant.grantId, label: '   ' }),
+    });
+    assert.equal(blank.status, 400);
     const revoked = await h.client.request({
       method: 'POST',
       path: '/admin/api/revoke',
