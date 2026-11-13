@@ -6,7 +6,7 @@ import { nodeMajor } from '../src/crypto.mjs';
 import { scanSource } from './security-check.mjs';
 
 const ROOT = process.cwd();
-const INCLUDE = ['package.json', 'README.md', '.env.example', 'src', 'scripts', 'systemd', 'docs'];
+const INCLUDE = ['package.json', 'README.md', '.env.example', 'src', 'scripts', 'systemd'];
 const SECRET_MARKERS = ['BEGIN ' + 'PRIVATE KEY', 'BEGIN ' + 'RSA PRIVATE KEY'];
 
 /**

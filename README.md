@@ -4,8 +4,6 @@
 
 One Node.js process. It is an OAuth authorization server for a single operator and a reverse proxy to one or more WAHA Streamable HTTP MCP endpoints. ChatGPT is the OAuth client. Each approval is bound to one WAHA. The bridge stores opaque access and refresh tokens, shows a browser login and consent screen, and injects that WAHA's MCP App key on the upstream request. It does not reimplement WhatsApp tools.
 
-This repository is the application. `BUILD_REPORT.md` records which checks ran on this machine and which live checks were not performed.
-
 ## Requirements
 
 - Node.js 18 or newer. `src/main.mjs` refuses older major versions. `npm start` reads `.env` itself, so it does not depend on `node --env-file`.
